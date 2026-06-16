@@ -1,0 +1,65 @@
+using Lumina.DTOs;
+using Lumina.Services.Documents;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Lumina.Controllers;
+
+[ApiController]
+[Route("api/documents")]
+public class DocumentsController : ControllerBase
+{
+    private readonly IDocumentService _documentService;
+
+    public DocumentsController(IDocumentService documentService)
+    {
+        _documentService = documentService;
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<UploadDocumentResponse>> Upload(
+        IFormFile file)
+    {
+        if (file.Length == 0)
+        {
+            return BadRequest("File is empty.");
+        }
+        
+        var allowedExtensions = new[] { ".txt", ".md" };
+
+        var extension = Path.GetExtension(file.FileName);
+
+        if (!allowedExtensions.Contains(extension))
+        {
+            return BadRequest("Only .txt and .md files are supported.");
+        }
+
+        var document = await _documentService.UploadAsync(file);
+
+        return Ok(new UploadDocumentResponse
+        {
+            Id = document.Id,
+            FileName = document.FileName
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll()
+    {
+        var documents = await _documentService.GetAllAsync();
+
+        return Ok(documents);
+    }
+
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetById(Guid id)
+    {
+        var document = await _documentService.GetByIdAsync(id);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(document);
+    }
+}
