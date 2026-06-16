@@ -1,17 +1,22 @@
+# macOS
+.DS_Store
+
+# Rider / IntelliJ
+.idea/
+
+# Build output
 bin/
 obj/
 
-.vs/
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+
 .vscode/
 
-*.user
-*.suo
 
-.DS_Store
-
-lumina.db
-lumina.db-shm
-lumina.db-wal
 
 appsettings.Development.json
 
