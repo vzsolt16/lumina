@@ -19,6 +19,7 @@ public class DocumentsController : ControllerBase
     public async Task<ActionResult<UploadDocumentResponse>> Upload(
         IFormFile file)
     {
+        Console.WriteLine(file.FileName);
         if (file.Length == 0)
         {
             return BadRequest("File is empty.");

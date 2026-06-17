@@ -117,6 +117,38 @@ namespace Lumina.Migrations
                     b.ToTable("Quizzes");
                 });
 
+            modelBuilder.Entity("Lumina.Models.QuizJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Progress")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("QuizJobs");
+                });
+
             modelBuilder.Entity("Lumina.Models.QuizQuestion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -167,6 +199,17 @@ namespace Lumina.Migrations
                 {
                     b.HasOne("Lumina.Models.Document", "Document")
                         .WithMany("Quizzes")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("Lumina.Models.QuizJob", b =>
+                {
+                    b.HasOne("Lumina.Models.Document", "Document")
+                        .WithMany()
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

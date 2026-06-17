@@ -20,6 +20,8 @@ public class LuminaDbContext : DbContext
 
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
+    public DbSet<QuizJob> QuizJobs => Set<QuizJob>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -35,6 +37,11 @@ public class LuminaDbContext : DbContext
             .WithOne(q => q.Document)
             .HasForeignKey(q => q.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<QuizJob>()
+            .HasOne(qj => qj.Document)
+            .WithMany()
+            .HasForeignKey(qj => qj.DocumentId);
 
         modelBuilder.Entity<Document>()
             .HasMany(d => d.ChatMessages)
