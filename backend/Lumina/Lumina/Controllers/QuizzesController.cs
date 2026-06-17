@@ -35,15 +35,41 @@ public class QuizzesController : ControllerBase
                 await scopedQuizService.ProcessQuizJobAsync(job.Id, token);
             });
 
-            return Ok(new
-            {
-                quizId = job.Id,
-                status = job.Status
-            });
+            return Ok(new { quizId = job.Id, status = job.Status });
         }
         catch (KeyNotFoundException)
         {
             return NotFound();
         }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll(Guid documentId)
+    {
+        try
+        {
+            var quizzes = await _quizService.GetAllAsync(documentId);
+            return Ok(quizzes);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    [HttpGet("{quizId:guid}")]
+    public async Task<IActionResult> GetById(Guid documentId, Guid quizId)
+    {
+        var quiz = await _quizService.GetByIdAsync(documentId, quizId);
+        if (quiz == null) return NotFound();
+        return Ok(quiz);
+    }
+
+    [HttpDelete("{quizId:guid}")]
+    public async Task<IActionResult> Delete(Guid documentId, Guid quizId)
+    {
+        var deleted = await _quizService.DeleteAsync(documentId, quizId);
+        if (!deleted) return NotFound();
+        return NoContent();
     }
 }

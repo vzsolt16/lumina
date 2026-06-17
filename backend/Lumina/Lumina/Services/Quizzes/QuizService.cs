@@ -211,8 +211,35 @@ public class QuizService : IQuizService
         });
     }
 
-    public async Task<Quiz> GenerateAsync(Guid documentId)
+    public async Task<IReadOnlyList<Quiz>> GetAllAsync(Guid documentId)
     {
-        throw new NotSupportedException("Use CreateQuizJobAsync instead.");
+        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId);
+        if (!documentExists)
+            throw new KeyNotFoundException($"Document {documentId} not found.");
+
+        return await _db.Quizzes
+            .Where(q => q.DocumentId == documentId)
+            .Include(q => q.Questions)
+            .ToListAsync();
+    }
+
+    public async Task<Quiz?> GetByIdAsync(Guid documentId, Guid quizId)
+    {
+        return await _db.Quizzes
+            .Where(q => q.DocumentId == documentId && q.Id == quizId)
+            .Include(q => q.Questions)
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task<bool> DeleteAsync(Guid documentId, Guid quizId)
+    {
+        var quiz = await _db.Quizzes
+            .FirstOrDefaultAsync(q => q.DocumentId == documentId && q.Id == quizId);
+
+        if (quiz == null) return false;
+
+        _db.Quizzes.Remove(quiz);
+        await _db.SaveChangesAsync();
+        return true;
     }
 }

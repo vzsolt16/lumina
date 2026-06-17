@@ -180,6 +180,35 @@ public class FlashcardService : IFlashcardService
         }
     }
 
+    public async Task<IReadOnlyList<Flashcard>> GetAllAsync(Guid documentId)
+    {
+        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId);
+        if (!documentExists)
+            throw new KeyNotFoundException($"Document {documentId} not found.");
+
+        return await _db.Flashcards
+            .Where(f => f.DocumentId == documentId)
+            .ToListAsync();
+    }
+
+    public async Task<Flashcard?> GetByIdAsync(Guid documentId, Guid flashcardId)
+    {
+        return await _db.Flashcards
+            .FirstOrDefaultAsync(f => f.DocumentId == documentId && f.Id == flashcardId);
+    }
+
+    public async Task<bool> DeleteAsync(Guid documentId, Guid flashcardId)
+    {
+        var flashcard = await _db.Flashcards
+            .FirstOrDefaultAsync(f => f.DocumentId == documentId && f.Id == flashcardId);
+
+        if (flashcard == null) return false;
+
+        _db.Flashcards.Remove(flashcard);
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
     private async Task UpdateJobAndNotifyAsync(FlashcardJob job, string message)
     {
         await _db.SaveChangesAsync();

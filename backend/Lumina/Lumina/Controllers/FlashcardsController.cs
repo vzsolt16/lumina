@@ -36,15 +36,41 @@ public class FlashcardsController : ControllerBase
                 await scopedFlashcardService.ProcessFlashcardJobAsync(job.Id, token);
             });
 
-            return Ok(new
-            {
-                flashcardJobId = job.Id,
-                status = job.Status
-            });
+            return Ok(new { flashcardJobId = job.Id, status = job.Status });
         }
         catch (KeyNotFoundException)
         {
             return NotFound();
         }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll(Guid documentId)
+    {
+        try
+        {
+            var flashcards = await _flashcardService.GetAllAsync(documentId);
+            return Ok(flashcards);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    [HttpGet("{flashcardId:guid}")]
+    public async Task<IActionResult> GetById(Guid documentId, Guid flashcardId)
+    {
+        var flashcard = await _flashcardService.GetByIdAsync(documentId, flashcardId);
+        if (flashcard == null) return NotFound();
+        return Ok(flashcard);
+    }
+
+    [HttpDelete("{flashcardId:guid}")]
+    public async Task<IActionResult> Delete(Guid documentId, Guid flashcardId)
+    {
+        var deleted = await _flashcardService.DeleteAsync(documentId, flashcardId);
+        if (!deleted) return NotFound();
+        return NoContent();
     }
 }
