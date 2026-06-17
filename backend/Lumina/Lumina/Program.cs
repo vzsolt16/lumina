@@ -26,6 +26,7 @@ builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddHttpClient<IAiService, OllamaService>(client =>
 {
     client.BaseAddress = new Uri("http://localhost:11434");
+    client.Timeout = TimeSpan.FromMinutes(5);
 });
 
 var app = builder.Build();

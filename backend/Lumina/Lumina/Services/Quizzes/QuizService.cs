@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Lumina.Data;
 using Lumina.DTOs.Quiz;
 using Lumina.Models;
@@ -63,21 +64,31 @@ public class QuizService : IQuizService
             return;
         }
 
+        using var timerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        _ = Task.Run(async () =>
+        {
+            while (!timerCts.Token.IsCancellationRequested)
+            {
+                await Task.Delay(1500, timerCts.Token).ContinueWith(_ => { });
+                if (timerCts.Token.IsCancellationRequested) break;
+
+                if (job.Progress < 90)
+                {
+                    job.Progress = Math.Min(job.Progress + 5, 90);
+                    await UpdateJobAndNotifyAsync(job, "Generating questions...");
+                }
+            }
+        }, timerCts.Token);
+
         try
         {
-            var questions = new List<GeneratedQuizQuestionDto>();
-            int totalQuestions = 5;
+            var questions = await GenerateAllQuestionsAsync(job.Document.Content, cancellationToken);
 
-            for (int i = 1; i <= totalQuestions; i++)
-            {
-                if (cancellationToken.IsCancellationRequested) break;
+            await timerCts.CancelAsync();
 
-                var question = await GenerateSingleQuestionAsync(job.Document.Content, questions, cancellationToken);
-                questions.Add(question);
-
-                job.Progress = (int)((double)i / totalQuestions * 100);
-                await UpdateJobAndNotifyAsync(job, $"Generated question {i}");
-            }
+            job.Progress = 100;
+            await UpdateJobAndNotifyAsync(job, "Generated all questions");
 
             var finalQuizDto = new GeneratedQuizDto
             {
@@ -94,6 +105,10 @@ public class QuizService : IQuizService
                 {
                     Id = Guid.NewGuid(),
                     Question = q.Question,
+                    AnswerA = q.AnswerA,
+                    AnswerB = q.AnswerB,
+                    AnswerC = q.AnswerC,
+                    AnswerD = q.AnswerD,
                     CorrectAnswer = q.CorrectAnswer
                 }).ToList()
             };
@@ -115,6 +130,7 @@ public class QuizService : IQuizService
         }
         catch (Exception ex)
         {
+            await timerCts.CancelAsync();
             _logger.LogError(ex, "Error processing quiz job {JobId}", jobId);
             job.Status = "Failed";
             await _db.SaveChangesAsync(CancellationToken.None);
@@ -127,38 +143,32 @@ public class QuizService : IQuizService
         }
     }
 
-    private async Task<GeneratedQuizQuestionDto> GenerateSingleQuestionAsync(string content, List<GeneratedQuizQuestionDto> existingQuestions, CancellationToken cancellationToken)
+    private async Task<List<GeneratedQuizQuestionDto>> GenerateAllQuestionsAsync(string content, CancellationToken cancellationToken)
     {
-        var existingContext = existingQuestions.Any() 
-            ? "Avoid these questions that were already generated: " + string.Join(" | ", existingQuestions.Select(q => q.Question))
-            : "";
-
-        var format = "{ \"question\": \"Question text\", \"correctAnswer\": \"Answer text\" }";
         var prompt = $"""
-                      You are generating a study quiz question.
-                      Based on the study material below, generate ONE multiple choice or short answer question.
-                      
-                      {existingContext}
-
-                      Return ONLY valid JSON matching this schema:
-                      {format}
-
+                      /no_think
+                      Generate exactly 5 multiple-choice quiz questions from the study material below.
+                      Each question MUST cover a completely different fact or topic — no repeated topics allowed.
+                      Each question needs exactly 4 answer options (A, B, C, D).
+                      Only one answer is correct. The other three must be plausible but wrong.
+                      Set correctAnswer to the letter ("A", "B", "C", or "D") of the correct option.
+                      Draw everything directly from the study material.
                       Study Material:
                       {content}
                       """;
 
         var response = await _aiService.GenerateAsync(prompt);
-        
-        try 
-        {
-            var json = response.Trim();
-            if (json.StartsWith("```json")) json = json[7..];
-            if (json.StartsWith("```")) json = json[3..];
-            if (json.EndsWith("```")) json = json[..^3];
-            json = json.Trim();
 
-            return JsonSerializer.Deserialize<GeneratedQuizQuestionDto>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) 
-                   ?? throw new Exception("Failed to deserialize question.");
+        try
+        {
+            var text = Regex.Replace(response, @"<think>.*?</think>", "", RegexOptions.Singleline).Trim();
+            var start = text.IndexOf('{');
+            var end = text.LastIndexOf('}');
+            var json = start >= 0 && end > start ? text[start..(end + 1)] : text;
+
+            var wrapper = JsonSerializer.Deserialize<GeneratedQuizDto>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                          ?? throw new Exception("Failed to deserialize questions.");
+            return wrapper.Questions;
         }
         catch (Exception ex)
         {

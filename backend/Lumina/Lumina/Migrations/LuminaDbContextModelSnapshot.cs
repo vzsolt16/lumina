@@ -155,6 +155,22 @@ namespace Lumina.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AnswerA")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AnswerB")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AnswerC")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AnswerD")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CorrectAnswer")
                         .IsRequired()
                         .HasColumnType("TEXT");
