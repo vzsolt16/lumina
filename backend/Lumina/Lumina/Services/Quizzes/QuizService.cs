@@ -12,6 +12,29 @@ namespace Lumina.Services.Quizzes;
 
 public class QuizService : IQuizService
 {
+    private static readonly JsonElement QuizSchema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question":      { "type": "string" },
+                            "answerA":       { "type": "string" },
+                            "answerB":       { "type": "string" },
+                            "answerC":       { "type": "string" },
+                            "answerD":       { "type": "string" },
+                            "correctAnswer": { "type": "string", "enum": ["A", "B", "C", "D"] }
+                        },
+                        "required": ["question", "answerA", "answerB", "answerC", "answerD", "correctAnswer"]
+                    }
+                }
+            },
+            "required": ["questions"]
+        }
+        """).RootElement;
     private readonly LuminaDbContext _db;
     private readonly IAiService _aiService;
     private readonly IHubContext<QuizHub> _hubContext;
@@ -157,7 +180,7 @@ public class QuizService : IQuizService
                       {content}
                       """;
 
-        var response = await _aiService.GenerateAsync(prompt);
+        var response = await _aiService.GenerateAsync(prompt, QuizSchema, maxTokens: 1200);
 
         try
         {

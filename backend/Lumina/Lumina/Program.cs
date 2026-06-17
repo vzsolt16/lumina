@@ -1,6 +1,7 @@
 using Lumina.Data;
 using Lumina.Services.AI;
 using Lumina.Services.Documents;
+using Lumina.Services.Flashcards;
 using Lumina.Services.Quizzes;
 using Lumina.WebSockets;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,7 @@ builder.Services.AddHostedService<QuizBackgroundWorker>();
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
+builder.Services.AddScoped<IFlashcardService, FlashcardService>();
 
 builder.Services.AddHttpClient<IAiService, OllamaService>(client =>
 {
@@ -41,6 +43,7 @@ app.UseHttpsRedirection();
 
 app.MapControllers();
 app.MapHub<QuizHub>("/ws/quiz");
+app.MapHub<FlashcardHub>("/ws/flashcard");
 
 app.Run();
 

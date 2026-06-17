@@ -7,36 +7,12 @@ public class OllamaService : IAiService
 {
     private readonly HttpClient _httpClient;
 
-    private static readonly JsonElement QuizSchema = JsonDocument.Parse("""
-        {
-            "type": "object",
-            "properties": {
-                "questions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "question":      { "type": "string" },
-                            "answerA":       { "type": "string" },
-                            "answerB":       { "type": "string" },
-                            "answerC":       { "type": "string" },
-                            "answerD":       { "type": "string" },
-                            "correctAnswer": { "type": "string", "enum": ["A", "B", "C", "D"] }
-                        },
-                        "required": ["question", "answerA", "answerB", "answerC", "answerD", "correctAnswer"]
-                    }
-                }
-            },
-            "required": ["questions"]
-        }
-        """).RootElement;
-
     public OllamaService(HttpClient httpClient)
     {
         _httpClient = httpClient;
     }
 
-    public async Task<string> GenerateAsync(string prompt)
+    public async Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000)
     {
         var request = new OllamaGenerateRequest
         {
@@ -44,10 +20,10 @@ public class OllamaService : IAiService
             Prompt = prompt,
             Stream = false,
             Think = false,
-            Format = QuizSchema,
+            Format = schema,
             Options = new OllamaOptions
             {
-                NumPredict = 1200
+                NumPredict = maxTokens
             }
         };
 

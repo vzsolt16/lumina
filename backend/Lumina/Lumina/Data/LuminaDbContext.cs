@@ -22,6 +22,8 @@ public class LuminaDbContext : DbContext
 
     public DbSet<QuizJob> QuizJobs => Set<QuizJob>();
 
+    public DbSet<FlashcardJob> FlashcardJobs => Set<FlashcardJob>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -42,6 +44,11 @@ public class LuminaDbContext : DbContext
             .HasOne(qj => qj.Document)
             .WithMany()
             .HasForeignKey(qj => qj.DocumentId);
+
+        modelBuilder.Entity<FlashcardJob>()
+            .HasOne(fj => fj.Document)
+            .WithMany()
+            .HasForeignKey(fj => fj.DocumentId);
 
         modelBuilder.Entity<Document>()
             .HasMany(d => d.ChatMessages)
