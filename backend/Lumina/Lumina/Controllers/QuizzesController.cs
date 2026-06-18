@@ -9,16 +9,16 @@ public class QuizzesController : ControllerBase
 {
     private readonly IQuizService _quizService;
     private readonly IBackgroundTaskQueue _taskQueue;
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public QuizzesController(
         IQuizService quizService,
         IBackgroundTaskQueue taskQueue,
-        IServiceProvider serviceProvider)
+        IServiceScopeFactory scopeFactory)
     {
         _quizService = quizService;
         _taskQueue = taskQueue;
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
     }
 
     [HttpPost]
@@ -30,7 +30,7 @@ public class QuizzesController : ControllerBase
 
             await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
             {
-                using var scope = _serviceProvider.CreateScope();
+                using var scope = _scopeFactory.CreateScope();
                 var scopedQuizService = scope.ServiceProvider.GetRequiredService<IQuizService>();
                 await scopedQuizService.ProcessQuizJobAsync(job.Id, token);
             });

@@ -10,16 +10,16 @@ public class FlashcardsController : ControllerBase
 {
     private readonly IFlashcardService _flashcardService;
     private readonly IBackgroundTaskQueue _taskQueue;
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public FlashcardsController(
         IFlashcardService flashcardService,
         IBackgroundTaskQueue taskQueue,
-        IServiceProvider serviceProvider)
+        IServiceScopeFactory scopeFactory)
     {
         _flashcardService = flashcardService;
         _taskQueue = taskQueue;
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
     }
 
     [HttpPost]
@@ -31,7 +31,7 @@ public class FlashcardsController : ControllerBase
 
             await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
             {
-                using var scope = _serviceProvider.CreateScope();
+                using var scope = _scopeFactory.CreateScope();
                 var scopedFlashcardService = scope.ServiceProvider.GetRequiredService<IFlashcardService>();
                 await scopedFlashcardService.ProcessFlashcardJobAsync(job.Id, token);
             });
