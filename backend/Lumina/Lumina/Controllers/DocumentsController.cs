@@ -33,7 +33,7 @@ public class DocumentsController : ControllerBase
         
         var allowedExtensions = new[] { ".txt", ".md" };
 
-        var extension = Path.GetExtension(file.FileName);
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
 
         if (!allowedExtensions.Contains(extension))
         {
