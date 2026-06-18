@@ -1,5 +1,5 @@
 // Thin fetch wrapper around the Lumina backend.
-// All requests go through Vite's dev proxy (/api -> https://localhost:7204),
+// All requests go through Vite's dev proxy (/api -> https://localhost:5131),
 // so paths here are origin-relative.
 
 async function handle(res) {

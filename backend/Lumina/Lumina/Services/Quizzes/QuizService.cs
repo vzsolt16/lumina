@@ -89,7 +89,7 @@ public class QuizService : IQuizService
 
         using var timerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        _ = Task.Run(async () =>
+        var timerTask = Task.Run(async () =>
         {
             while (!timerCts.Token.IsCancellationRequested)
             {
@@ -99,7 +99,12 @@ public class QuizService : IQuizService
                 if (job.Progress < 90)
                 {
                     job.Progress = Math.Min(job.Progress + 5, 90);
-                    await UpdateJobAndNotifyAsync(job, "Generating questions...");
+                    await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Progress", new
+                    {
+                        quizId = job.Id,
+                        progress = job.Progress,
+                        message = "Generating questions..."
+                    });
                 }
             }
         }, timerCts.Token);
@@ -109,9 +114,7 @@ public class QuizService : IQuizService
             var questions = await GenerateAllQuestionsAsync(job.Document.Content, cancellationToken);
 
             await timerCts.CancelAsync();
-
-            job.Progress = 100;
-            await UpdateJobAndNotifyAsync(job, "Generated all questions");
+            await timerTask;
 
             var finalQuizDto = new GeneratedQuizDto
             {
@@ -154,10 +157,11 @@ public class QuizService : IQuizService
         catch (Exception ex)
         {
             await timerCts.CancelAsync();
+            await timerTask;
             _logger.LogError(ex, "Error processing quiz job {JobId}", jobId);
             job.Status = "Failed";
             await _db.SaveChangesAsync(CancellationToken.None);
-            
+
             await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Failed", new
             {
                 status = "failed",
@@ -198,17 +202,6 @@ public class QuizService : IQuizService
             _logger.LogError(ex, "Failed to parse AI response: {Response}", response);
             throw;
         }
-    }
-
-    private async Task UpdateJobAndNotifyAsync(QuizJob job, string message)
-    {
-        await _db.SaveChangesAsync();
-        await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Progress", new
-        {
-            quizId = job.Id,
-            progress = job.Progress,
-            message = message
-        });
     }
 
     public async Task<IReadOnlyList<Quiz>> GetAllAsync(Guid documentId)

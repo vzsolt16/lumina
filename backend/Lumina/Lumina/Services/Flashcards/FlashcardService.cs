@@ -86,7 +86,7 @@ public class FlashcardService : IFlashcardService
 
         using var timerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        _ = Task.Run(async () =>
+        var timerTask = Task.Run(async () =>
         {
             while (!timerCts.Token.IsCancellationRequested)
             {
@@ -96,7 +96,12 @@ public class FlashcardService : IFlashcardService
                 if (job.Progress < 90)
                 {
                     job.Progress = Math.Min(job.Progress + 5, 90);
-                    await UpdateJobAndNotifyAsync(job, "Generating flashcards...");
+                    await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Progress", new
+                    {
+                        flashcardJobId = job.Id,
+                        progress = job.Progress,
+                        message = "Generating flashcards..."
+                    });
                 }
             }
         }, timerCts.Token);
@@ -106,9 +111,7 @@ public class FlashcardService : IFlashcardService
             var flashcards = await GenerateAllFlashcardsAsync(job.Document.Content, cancellationToken);
 
             await timerCts.CancelAsync();
-
-            job.Progress = 100;
-            await UpdateJobAndNotifyAsync(job, "Generated all flashcards");
+            await timerTask;
 
             var flashcardEntities = flashcards.Select(f => new Flashcard
             {
@@ -136,6 +139,7 @@ public class FlashcardService : IFlashcardService
         catch (Exception ex)
         {
             await timerCts.CancelAsync();
+            await timerTask;
             _logger.LogError(ex, "Error processing flashcard job {JobId}", jobId);
             job.Status = "Failed";
             await _db.SaveChangesAsync(CancellationToken.None);
@@ -209,14 +213,5 @@ public class FlashcardService : IFlashcardService
         return true;
     }
 
-    private async Task UpdateJobAndNotifyAsync(FlashcardJob job, string message)
-    {
-        await _db.SaveChangesAsync();
-        await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Progress", new
-        {
-            flashcardJobId = job.Id,
-            progress = job.Progress,
-            message
-        });
-    }
+
 }
