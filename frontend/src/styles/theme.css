@@ -1,0 +1,376 @@
+/* ============================================================
+   Lumina — Design System (Gen X Soft Club)
+   Tokens + global chrome shared across landing + studio.
+   Source of truth: DESIGN.md / landing-genx.html. Do not deviate.
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #d8edf5;
+  --bg2: #c4e2f0;
+  --panel: rgba(255, 255, 255, 0.38);
+  --panel2: rgba(180, 220, 240, 0.45);
+  --teal: #3ea8c8;
+  --teal2: #2790b0;
+  --cyan: #58c8e0;
+  --seafoam: #5acaae;
+  --text-dark: #0f2a38;
+  --text-mid: #2a5468;
+  --text-light: #5a8498;
+  --white: #f4fafd;
+  --border-t: rgba(62, 168, 200, 0.3);
+  --border-w: rgba(255, 255, 255, 0.6);
+  --grid: rgba(62, 168, 200, 0.15);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Barlow', sans-serif;
+  background: var(--bg);
+  color: var(--text-dark);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* ── BACKGROUND TEXTURE ──────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(90, 202, 174, 0.08) 0%, transparent 50%),
+    linear-gradient(220deg, rgba(62, 168, 200, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 60% at 70% 30%, rgba(180, 225, 245, 0.5) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── GRID OVERLAY ─────────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── DATA STREAM SIDEBAR ──────────────────────────── */
+.data-stream {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 48px;
+  height: 100vh;
+  overflow: hidden;
+  z-index: 5;
+  background: rgba(15, 42, 56, 0.07);
+  border-right: 1px solid var(--border-t);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 4px;
+  gap: 2px;
+}
+
+.data-stream span {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 7px;
+  color: rgba(62, 168, 200, 0.5);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  animation: stream-scroll 20s linear infinite;
+  display: block;
+  text-align: center;
+}
+
+@keyframes stream-scroll {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+  100% { opacity: 0.3; }
+}
+
+/* ── WRAPPER ──────────────────────────────────────── */
+.wrapper {
+  position: relative;
+  z-index: 1;
+  margin-left: 48px;
+}
+
+/* ── NAV ──────────────────────────────────────────── */
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 0 48px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(196, 226, 240, 0.7);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-t);
+}
+
+.nav-logo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 1.5rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dark);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+}
+
+.nav-logo .logo-mark {
+  font-weight: 300;
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  color: var(--text-light);
+  text-transform: uppercase;
+  border-left: 1px solid var(--border-t);
+  padding-left: 12px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 0;
+  list-style: none;
+}
+
+.nav-links li {
+  border-right: 1px solid var(--border-t);
+}
+.nav-links li:first-child {
+  border-left: 1px solid var(--border-t);
+}
+
+.nav-links a {
+  display: block;
+  padding: 0 20px;
+  height: 60px;
+  line-height: 60px;
+  text-decoration: none;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mid);
+  transition: background 0.2s, color 0.2s;
+}
+
+.nav-links a:hover {
+  background: rgba(62, 168, 200, 0.12);
+  color: var(--text-dark);
+}
+
+.nav-cta {
+  display: flex;
+  gap: 0;
+}
+
+.btn-nav {
+  height: 32px;
+  padding: 0 18px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid var(--border-t);
+  transition: all 0.2s;
+}
+
+.btn-nav.ghost {
+  background: transparent;
+  color: var(--text-mid);
+}
+
+.btn-nav.ghost:hover {
+  background: rgba(62, 168, 200, 0.1);
+  color: var(--text-dark);
+}
+
+.btn-nav.solid {
+  background: var(--teal);
+  color: var(--white);
+  border-color: var(--teal);
+  margin-left: -1px;
+}
+
+.btn-nav.solid:hover {
+  background: var(--teal2);
+}
+
+/* ── SECTION BASE ─────────────────────────────────── */
+.section {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 88px 64px;
+}
+
+.section-tag {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  color: var(--teal);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-tag::before {
+  content: '';
+  width: 16px;
+  height: 1px;
+  background: var(--teal);
+}
+
+.section-heading {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: clamp(2rem, 4vw, 3rem);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-dark);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.section-sub {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-style: italic;
+  font-size: 1rem;
+  color: var(--text-light);
+  margin-bottom: 56px;
+  letter-spacing: 0.04em;
+}
+
+/* ── BUTTONS (shared rectangular system) ──────────── */
+.btn {
+  height: 44px;
+  padding: 0 28px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid var(--border-t);
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--teal);
+  color: var(--white);
+  border-color: var(--teal);
+}
+
+.btn.primary:not(:disabled):hover {
+  background: var(--teal2);
+}
+
+.btn.ghost {
+  background: rgba(255, 255, 255, 0.3);
+  color: var(--text-mid);
+  backdrop-filter: blur(8px);
+}
+
+.btn.ghost:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--text-dark);
+}
+
+/* ── FOOTER ───────────────────────────────────────── */
+footer {
+  border-top: 1px solid var(--border-t);
+  background: rgba(15, 42, 56, 0.05);
+}
+
+.footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footer-logo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dark);
+}
+
+.footer-system {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text-light);
+  letter-spacing: 0.12em;
+}
+
+.footer-links {
+  display: flex;
+  gap: 0;
+  list-style: none;
+}
+
+.footer-links li {
+  border-right: 1px solid var(--border-t);
+}
+
+.footer-links li:first-child {
+  border-left: 1px solid var(--border-t);
+}
+
+.footer-links a {
+  display: block;
+  padding: 6px 16px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.footer-links a:hover {
+  color: var(--text-dark);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}

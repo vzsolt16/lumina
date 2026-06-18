@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumina — Study Systems</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600&family=Barlow:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #D8EDF5;
+      --bg2:       #C4E2F0;
+      --panel:     rgba(255,255,255,0.38);
+      --panel2:    rgba(180,220,240,0.45);
+      --teal:      #3EA8C8;
+      --teal2:     #2790B0;
+      --cyan:      #58C8E0;
+      --seafoam:   #5ACAAE;
+      --text-dark: #0F2A38;
+      --text-mid:  #2A5468;
+      --text-light:#5A8498;
+      --white:     #F4FAFD;
+      --border-t:  rgba(62,168,200,0.3);
+      --border-w:  rgba(255,255,255,0.6);
+      --grid:      rgba(62,168,200,0.15);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Barlow', sans-serif;
+      background: var(--bg);
+      color: var(--text-dark);
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* ── BACKGROUND TEXTURE ──────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(135deg, rgba(90,202,174,0.08) 0%, transparent 50%),
+        linear-gradient(220deg, rgba(62,168,200,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 80% 60% at 70% 30%, rgba(180,225,245,0.5) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── GRID OVERLAY ─────────────────────────────────── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── DATA STREAM SIDEBAR ──────────────────────────── */
+    .data-stream {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 48px;
+      height: 100vh;
+      overflow: hidden;
+      z-index: 5;
+      background: rgba(15, 42, 56, 0.07);
+      border-right: 1px solid var(--border-t);
+      display: flex;
+      flex-direction: column;
+      padding: 8px 4px;
+      gap: 2px;
+    }
+
+    .data-stream span {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 7px;
+      color: rgba(62,168,200,0.5);
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+      animation: stream-scroll 20s linear infinite;
+      display: block;
+      text-align: center;
+    }
+
+    @keyframes stream-scroll {
+      0%   { opacity: 0.3; }
+      50%  { opacity: 0.7; }
+      100% { opacity: 0.3; }
+    }
+
+    /* ── WRAPPER ──────────────────────────────────────── */
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      margin-left: 48px;
+    }
+
+    /* ── NAV ──────────────────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 0 48px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(196, 226, 240, 0.7);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-t);
+    }
+
+    .nav-logo {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 1.5rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dark);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .nav-logo .logo-mark {
+      font-weight: 300;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: var(--text-light);
+      text-transform: uppercase;
+      border-left: 1px solid var(--border-t);
+      padding-left: 12px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 0;
+      list-style: none;
+    }
+
+    .nav-links li {
+      border-right: 1px solid var(--border-t);
+    }
+    .nav-links li:first-child {
+      border-left: 1px solid var(--border-t);
+    }
+
+    .nav-links a {
+      display: block;
+      padding: 0 20px;
+      height: 60px;
+      line-height: 60px;
+      text-decoration: none;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .nav-links a:hover {
+      background: rgba(62,168,200,0.12);
+      color: var(--text-dark);
+    }
+
+    .nav-cta {
+      display: flex;
+      gap: 0;
+    }
+
+    .btn-nav {
+      height: 32px;
+      padding: 0 18px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: 1px solid var(--border-t);
+      transition: all 0.2s;
+    }
+
+    .btn-nav.ghost {
+      background: transparent;
+      color: var(--text-mid);
+    }
+
+    .btn-nav.ghost:hover {
+      background: rgba(62,168,200,0.1);
+      color: var(--text-dark);
+    }
+
+    .btn-nav.solid {
+      background: var(--teal);
+      color: var(--white);
+      border-color: var(--teal);
+      margin-left: -1px;
+    }
+
+    .btn-nav.solid:hover {
+      background: var(--teal2);
+    }
+
+    /* ── HERO ─────────────────────────────────────────── */
+    .hero {
+      position: relative;
+      min-height: 88vh;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    /* Layered background panels */
+    .hero-bg-layer {
+      position: absolute;
+      inset: 0;
+    }
+
+    .hero-bg-layer .panel-a {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 58%;
+      height: 100%;
+      background: linear-gradient(135deg, rgba(180,225,245,0.5), rgba(90,202,174,0.15));
+      border-left: 1px solid var(--border-w);
+    }
+
+    .hero-bg-layer .panel-b {
+      position: absolute;
+      right: 15%;
+      top: 20%;
+      width: 30%;
+      height: 55%;
+      background: rgba(255,255,255,0.22);
+      border: 1px solid var(--border-w);
+    }
+
+    .hero-bg-layer .panel-c {
+      position: absolute;
+      right: 8%;
+      top: 10%;
+      width: 20%;
+      height: 30%;
+      background: rgba(62,168,200,0.1);
+      border: 1px solid var(--border-t);
+    }
+
+    .crosshair {
+      position: absolute;
+      width: 20px; height: 20px;
+      border-top: 1px solid var(--teal);
+      border-left: 1px solid var(--teal);
+    }
+
+    .crosshair.tr {
+      top: -1px; right: -1px;
+      border-top: 1px solid var(--teal);
+      border-left: none;
+      border-right: 1px solid var(--teal);
+    }
+
+    .crosshair.bl {
+      bottom: -1px; left: -1px;
+      border-top: none;
+      border-bottom: 1px solid var(--teal);
+      border-left: 1px solid var(--teal);
+    }
+
+    .crosshair.br {
+      bottom: -1px; right: -1px;
+      border-top: none;
+      border-bottom: 1px solid var(--teal);
+      border-left: none;
+      border-right: 1px solid var(--teal);
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      padding: 80px 64px;
+      max-width: 620px;
+    }
+
+    .hero-pre {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 400;
+      font-size: 0.7rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hero-pre::before {
+      content: '';
+      display: block;
+      width: 24px;
+      height: 1px;
+      background: var(--teal);
+    }
+
+    .hero-h1 {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: clamp(3.5rem, 7vw, 5.5rem);
+      line-height: 0.95;
+      letter-spacing: -0.01em;
+      text-transform: uppercase;
+      color: var(--text-dark);
+      margin-bottom: 8px;
+    }
+
+    .hero-h1 .outline {
+      -webkit-text-stroke: 1.5px var(--teal);
+      color: transparent;
+    }
+
+    .hero-sub {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 400;
+      font-style: italic;
+      letter-spacing: 0.06em;
+      color: var(--text-mid);
+      margin-bottom: 32px;
+      margin-top: 12px;
+    }
+
+    .hero-desc {
+      font-size: 0.9rem;
+      color: var(--text-mid);
+      line-height: 1.7;
+      max-width: 420px;
+      margin-bottom: 40px;
+      font-weight: 400;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 0;
+    }
+
+    .btn-hero {
+      height: 44px;
+      padding: 0 28px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: 1px solid var(--border-t);
+      transition: all 0.2s;
+    }
+
+    .btn-hero.primary {
+      background: var(--teal);
+      color: var(--white);
+      border-color: var(--teal);
+    }
+
+    .btn-hero.primary:hover {
+      background: var(--teal2);
+    }
+
+    .btn-hero.secondary {
+      background: rgba(255,255,255,0.3);
+      color: var(--text-mid);
+      backdrop-filter: blur(8px);
+      margin-left: -1px;
+    }
+
+    .btn-hero.secondary:hover {
+      background: rgba(255,255,255,0.5);
+      color: var(--text-dark);
+    }
+
+    /* hero right overlay card */
+    .hero-card {
+      position: absolute;
+      z-index: 3;
+      background: rgba(255,255,255,0.55);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-w);
+      padding: 20px 24px;
+    }
+
+    .hero-card.info-card {
+      right: 6%;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 200px;
+    }
+
+    .hero-card.stat-card {
+      right: 28%;
+      bottom: 12%;
+      width: 180px;
+    }
+
+    .card-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.62rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 8px;
+    }
+
+    .card-value {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 1.6rem;
+      color: var(--text-dark);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .card-desc {
+      font-size: 0.75rem;
+      color: var(--text-light);
+      line-height: 1.4;
+    }
+
+    .card-bar {
+      height: 2px;
+      background: rgba(62,168,200,0.2);
+      margin-top: 12px;
+      border-radius: 1px;
+      overflow: hidden;
+    }
+
+    .card-bar-fill {
+      height: 100%;
+      background: var(--teal);
+      width: 72%;
+    }
+
+    .hero-tag {
+      position: absolute;
+      z-index: 3;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.62rem;
+      color: rgba(62,168,200,0.7);
+      letter-spacing: 0.1em;
+    }
+
+    .hero-tag.t1 { right: 40%; top: 14%; }
+    .hero-tag.t2 { right: 10%; top: 20%; }
+    .hero-tag.t3 { right: 20%; bottom: 18%; }
+
+    /* ── TICKER ───────────────────────────────────────── */
+    .ticker {
+      border-top: 1px solid var(--border-t);
+      border-bottom: 1px solid var(--border-t);
+      background: rgba(15,42,56,0.06);
+      overflow: hidden;
+      height: 38px;
+      display: flex;
+      align-items: center;
+    }
+
+    .ticker-label {
+      flex-shrink: 0;
+      padding: 0 20px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--teal);
+      border-right: 1px solid var(--border-t);
+      height: 100%;
+      display: flex;
+      align-items: center;
+      background: rgba(62,168,200,0.08);
+    }
+
+    .ticker-track {
+      display: flex;
+      animation: ticker-scroll 28s linear infinite;
+      white-space: nowrap;
+    }
+
+    .ticker-item {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.7rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+      padding: 0 28px;
+      border-right: 1px solid var(--border-t);
+      height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ticker-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--teal); }
+
+    @keyframes ticker-scroll {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    /* ── SECTION BASE ─────────────────────────────────── */
+    .section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 88px 64px;
+    }
+
+    .section-tag {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+      color: var(--teal);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-tag::before {
+      content: '';
+      width: 16px;
+      height: 1px;
+      background: var(--teal);
+    }
+
+    .section-heading {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: clamp(2rem, 4vw, 3rem);
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: var(--text-dark);
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .section-sub {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-style: italic;
+      font-size: 1rem;
+      color: var(--text-light);
+      margin-bottom: 56px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── FEATURES ─────────────────────────────────────── */
+    .features-section {
+      background: rgba(255,255,255,0.18);
+      border-top: 1px solid var(--border-t);
+      border-bottom: 1px solid var(--border-t);
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      border: 1px solid var(--border-t);
+    }
+
+    .feat-cell {
+      padding: 36px 28px;
+      border-right: 1px solid var(--border-t);
+      position: relative;
+      transition: background 0.25s;
+    }
+
+    .feat-cell:last-child { border-right: none; }
+
+    .feat-cell:hover {
+      background: rgba(255,255,255,0.35);
+    }
+
+    .feat-num {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.62rem;
+      color: var(--teal);
+      letter-spacing: 0.14em;
+      margin-bottom: 20px;
+    }
+
+    .feat-icon-wrap {
+      width: 40px; height: 40px;
+      border: 1px solid var(--border-t);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+      margin-bottom: 20px;
+      background: rgba(62,168,200,0.06);
+    }
+
+    .feat-name {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dark);
+      margin-bottom: 12px;
+    }
+
+    .feat-desc {
+      font-size: 0.82rem;
+      color: var(--text-mid);
+      line-height: 1.65;
+      font-weight: 300;
+    }
+
+    .feat-cell-footer {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-t);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.6rem;
+      color: rgba(62,168,200,0.5);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── HOW IT WORKS ─────────────────────────────────── */
+    .how-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border-t);
+      border: 1px solid var(--border-t);
+    }
+
+    .how-cell {
+      background: var(--bg);
+      padding: 40px 32px;
+      position: relative;
+      transition: background 0.2s;
+    }
+
+    .how-cell:hover { background: rgba(255,255,255,0.4); }
+
+    .how-num {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 4rem;
+      line-height: 1;
+      color: rgba(62,168,200,0.15);
+      position: absolute;
+      top: 16px;
+      right: 20px;
+      letter-spacing: -0.02em;
+    }
+
+    .how-step-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+      color: var(--teal);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .how-step-label::before {
+      content: '';
+      width: 20px; height: 1px;
+      background: var(--teal);
+    }
+
+    .how-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 600;
+      font-size: 1.2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dark);
+      margin-bottom: 12px;
+    }
+
+    .how-desc {
+      font-size: 0.84rem;
+      color: var(--text-mid);
+      line-height: 1.65;
+      font-weight: 300;
+    }
+
+    /* ── AI SECTION ───────────────────────────────────── */
+    .ai-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: start;
+    }
+
+    .ai-left {}
+
+    .ai-window {
+      border: 1px solid var(--border-t);
+      background: rgba(255,255,255,0.4);
+      backdrop-filter: blur(10px);
+      position: relative;
+    }
+
+    .ai-window-bar {
+      padding: 10px 16px;
+      background: rgba(62,168,200,0.1);
+      border-bottom: 1px solid var(--border-t);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .ai-window-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--teal);
+    }
+
+    .ai-window-status {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.58rem;
+      color: var(--seafoam);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--seafoam);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .ai-window-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 260px;
+    }
+
+    .ai-msg {
+      padding: 12px 16px;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      border: 1px solid;
+      max-width: 88%;
+    }
+
+    .ai-msg.system {
+      background: rgba(62,168,200,0.06);
+      border-color: var(--border-t);
+      color: var(--text-mid);
+      align-self: flex-start;
+    }
+
+    .ai-msg.user {
+      background: rgba(15,42,56,0.07);
+      border-color: rgba(15,42,56,0.15);
+      color: var(--text-dark);
+      align-self: flex-end;
+    }
+
+    .ai-msg-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.16em;
+      color: var(--teal);
+      margin-bottom: 4px;
+    }
+
+    .ai-input-row {
+      border-top: 1px solid var(--border-t);
+      padding: 10px 16px;
+      display: flex;
+      gap: 0;
+    }
+
+    .ai-input {
+      flex: 1;
+      background: transparent;
+      border: 1px solid var(--border-t);
+      padding: 8px 12px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-dark);
+      letter-spacing: 0.04em;
+    }
+
+    .ai-input::placeholder { color: rgba(90,132,152,0.5); }
+    .ai-input:focus { outline: none; border-color: var(--teal); }
+
+    .ai-send {
+      background: var(--teal);
+      border: 1px solid var(--teal);
+      color: var(--white);
+      padding: 0 16px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      margin-left: -1px;
+      letter-spacing: 0.1em;
+    }
+
+    .ai-send:hover { background: var(--teal2); }
+
+    /* ── STATS BAND ───────────────────────────────────── */
+    .stats-band {
+      border-top: 1px solid var(--border-t);
+      border-bottom: 1px solid var(--border-t);
+      background: rgba(15,42,56,0.04);
+    }
+
+    .stats-inner {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+
+    .stat-cell {
+      padding: 40px 32px;
+      border-right: 1px solid var(--border-t);
+      position: relative;
+    }
+
+    .stat-cell:last-child { border-right: none; }
+
+    .stat-num {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 3rem;
+      line-height: 1;
+      color: var(--teal);
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .stat-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.7rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--text-light);
+    }
+
+    .stat-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--border-t);
+      overflow: hidden;
+    }
+
+    .stat-bar-fill {
+      height: 100%;
+      background: var(--teal);
+      transition: width 1s ease;
+    }
+
+    /* ── TESTIMONIALS ─────────────────────────────────── */
+    .testi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border-t);
+      border: 1px solid var(--border-t);
+    }
+
+    .testi-cell {
+      background: var(--bg);
+      padding: 32px 28px;
+      transition: background 0.2s;
+    }
+
+    .testi-cell:hover { background: rgba(255,255,255,0.45); }
+
+    .testi-quote {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 2.5rem;
+      line-height: 1;
+      color: rgba(62,168,200,0.25);
+      margin-bottom: 12px;
+    }
+
+    .testi-text {
+      font-size: 0.85rem;
+      color: var(--text-mid);
+      line-height: 1.7;
+      font-weight: 300;
+      margin-bottom: 24px;
+    }
+
+    .testi-author {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.7rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-dark);
+      margin-bottom: 2px;
+      font-weight: 600;
+    }
+
+    .testi-role {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.58rem;
+      color: var(--text-light);
+      letter-spacing: 0.08em;
+    }
+
+    /* ── CTA ──────────────────────────────────────────── */
+    .cta-band {
+      background: rgba(15,42,56,0.06);
+      border-top: 1px solid var(--border-t);
+    }
+
+    .cta-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 80px 64px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 48px;
+    }
+
+    .cta-text {}
+
+    .cta-heading {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: var(--text-dark);
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+
+    .cta-heading .line2 {
+      -webkit-text-stroke: 1.5px var(--teal);
+      color: transparent;
+    }
+
+    .cta-note {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--text-light);
+      letter-spacing: 0.12em;
+      margin-top: 12px;
+    }
+
+    .cta-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .btn-cta {
+      height: 50px;
+      padding: 0 36px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: 1px solid;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+
+    .btn-cta.main {
+      background: var(--teal);
+      color: var(--white);
+      border-color: var(--teal);
+    }
+
+    .btn-cta.main:hover { background: var(--teal2); }
+
+    .btn-cta.alt {
+      background: transparent;
+      color: var(--text-mid);
+      border-color: var(--border-t);
+      margin-top: -1px;
+    }
+
+    .btn-cta.alt:hover {
+      background: rgba(62,168,200,0.08);
+      color: var(--text-dark);
+    }
+
+    /* ── FOOTER ───────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border-t);
+      background: rgba(15,42,56,0.05);
+    }
+
+    .footer-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-logo {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-dark);
+    }
+
+    .footer-system {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.6rem;
+      color: var(--text-light);
+      letter-spacing: 0.12em;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 0;
+      list-style: none;
+    }
+
+    .footer-links li {
+      border-right: 1px solid var(--border-t);
+    }
+
+    .footer-links li:first-child {
+      border-left: 1px solid var(--border-t);
+    }
+
+    .footer-links a {
+      display: block;
+      padding: 6px 16px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--text-light);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: var(--text-dark); }
+  </style>
+</head>
+<body>
+
+  <!-- DATA STREAM -->
+  <div class="data-stream" aria-hidden="true">
+    <span>LMNA·0x1</span>
+    <span>FLSH·REV</span>
+    <span>0110110</span>
+    <span>QZMOD·3</span>
+    <span>AI·SYS</span>
+    <span>0x8A3F</span>
+    <span>SYNC·OK</span>
+    <span>1001011</span>
+    <span>NTRL·AI</span>
+    <span>BUF·CLR</span>
+    <span>0x2C7E</span>
+    <span>LRN·IDX</span>
+    <span>0100111</span>
+    <span>DECK·42</span>
+    <span>PROC·OK</span>
+    <span>0x5D9A</span>
+    <span>CARD·GEN</span>
+    <span>1110001</span>
+    <span>RETNT·↑</span>
+    <span>SYS·RDY</span>
+    <span>0xAE12</span>
+    <span>LMNA·0x1</span>
+    <span>FLSH·REV</span>
+    <span>0110110</span>
+    <span>QZMOD·3</span>
+    <span>AI·SYS</span>
+    <span>0x8A3F</span>
+    <span>SYNC·OK</span>
+    <span>1001011</span>
+    <span>NTRL·AI</span>
+    <span>BUF·CLR</span>
+    <span>0x2C7E</span>
+  </div>
+
+  <div class="wrapper">
+
+    <!-- NAV -->
+    <nav>
+      <div class="nav-logo">
+        LUMINA
+        <span class="logo-mark">Study Systems</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how">Protocol</a></li>
+        <li><a href="#companion">AI Unit</a></li>
+      </ul>
+      <div class="nav-cta">
+        <button class="btn-nav ghost">Log in</button>
+        <button class="btn-nav solid">Access free</button>
+      </div>
+    </nav>
+
+    <!-- HERO -->
+    <section class="hero">
+      <div class="hero-bg-layer">
+        <div class="panel-a">
+          <div class="crosshair" style="top:-1px;left:-1px;"></div>
+          <div class="crosshair tr"></div>
+          <div class="crosshair bl"></div>
+          <div class="crosshair br"></div>
+        </div>
+        <div class="panel-b">
+          <div class="crosshair" style="top:-1px;left:-1px;"></div>
+          <div class="crosshair tr"></div>
+          <div class="crosshair bl"></div>
+          <div class="crosshair br"></div>
+        </div>
+        <div class="panel-c">
+          <div class="crosshair" style="top:-1px;left:-1px;"></div>
+          <div class="crosshair tr"></div>
+        </div>
+      </div>
+
+      <div class="hero-content">
+        <div class="hero-pre">AI-powered study companion · v2.0</div>
+        <div class="hero-h1">
+          LEARN<br/>
+          <span class="outline">DEEPER</span><br/>
+          RETAIN MORE
+        </div>
+        <div class="hero-sub">Contemporary Study Systems</div>
+        <p class="hero-desc">Lumina transforms your notes into active study tools — flashcards, quizzes, and an AI companion that works alongside you. Calm interface. Smart engine.</p>
+        <div class="hero-actions">
+          <button class="btn-hero primary">Start free session</button>
+          <button class="btn-hero secondary">View protocol</button>
+        </div>
+      </div>
+
+      <div class="hero-card info-card">
+        <div class="card-label">Active learners</div>
+        <div class="card-value">12,400</div>
+        <div class="card-desc">students studying with Lumina this month</div>
+        <div class="card-bar"><div class="card-bar-fill"></div></div>
+      </div>
+
+      <div class="hero-card stat-card">
+        <div class="card-label">Avg. retention gain</div>
+        <div class="card-value">3×</div>
+        <div class="card-desc">improvement vs. passive reading</div>
+        <div class="card-bar"><div class="card-bar-fill" style="width:88%"></div></div>
+      </div>
+
+      <div class="hero-tag t1">SYS·LUMINA·2.0</div>
+      <div class="hero-tag t2">READY</div>
+      <div class="hero-tag t3">0xFF·STUDY·OK</div>
+    </section>
+
+    <!-- TICKER -->
+    <div class="ticker">
+      <div class="ticker-label">Lumina · Systems</div>
+      <div class="ticker-track">
+        <div class="ticker-item"><span class="ticker-dot"></span>Flashcard generation</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>AI-powered quizzes</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Spaced repetition</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Study companion</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Note processing</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Progress tracking</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Multi-subject support</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Instant card creation</div>
+        <!-- duplicate for loop -->
+        <div class="ticker-item"><span class="ticker-dot"></span>Flashcard generation</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>AI-powered quizzes</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Spaced repetition</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Study companion</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Note processing</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Progress tracking</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Multi-subject support</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Instant card creation</div>
+      </div>
+    </div>
+
+    <!-- FEATURES -->
+    <section id="features" class="features-section">
+      <div class="section">
+        <div class="section-tag">Core modules</div>
+        <div class="section-heading">Study tools.<br/>Built for focus.</div>
+        <div class="section-sub">— Four components, one coherent system</div>
+        <div class="features-grid">
+
+          <div class="feat-cell">
+            <div class="feat-num">01 // NOTES</div>
+            <div class="feat-icon-wrap">📝</div>
+            <div class="feat-name">Notes</div>
+            <p class="feat-desc">Clean, distraction-free writing. Organise your material the way your mind works — Lumina keeps it structured without getting in the way.</p>
+            <div class="feat-cell-footer">MODULE_STATUS: ACTIVE</div>
+          </div>
+
+          <div class="feat-cell">
+            <div class="feat-num">02 // FLASH</div>
+            <div class="feat-icon-wrap">🃏</div>
+            <div class="feat-name">Flashcards</div>
+            <p class="feat-desc">Auto-generated or hand-crafted. Spaced repetition built in. Study the right cards at the right time — the system decides, you focus on learning.</p>
+            <div class="feat-cell-footer">MODULE_STATUS: ACTIVE</div>
+          </div>
+
+          <div class="feat-cell">
+            <div class="feat-num">03 // QUIZ</div>
+            <div class="feat-icon-wrap">✏️</div>
+            <div class="feat-name">Quizzes</div>
+            <p class="feat-desc">Multiple choice, short answer, or true/false — generated from your notes. Find the gaps before the exam does.</p>
+            <div class="feat-cell-footer">MODULE_STATUS: ACTIVE</div>
+          </div>
+
+          <div class="feat-cell">
+            <div class="feat-num">04 // COMP</div>
+            <div class="feat-icon-wrap">💬</div>
+            <div class="feat-name">Study Corner</div>
+            <p class="feat-desc">An AI companion that explains, quizzes back, and talks concepts through. Not a chatbot. A study partner that knows your material.</p>
+            <div class="feat-cell-footer">MODULE_STATUS: ACTIVE</div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section id="how" class="section">
+      <div class="section-tag">Protocol</div>
+      <div class="section-heading">Three-step<br/>study sequence</div>
+      <div class="section-sub">— From raw notes to active retention</div>
+      <div class="how-grid">
+
+        <div class="how-cell">
+          <div class="how-num">01</div>
+          <div class="how-step-label">Input</div>
+          <div class="how-title">Upload your material</div>
+          <p class="how-desc">Drop a PDF, paste text, or write directly. Any subject. Any format. Lumina processes it immediately — no setup, no configuration.</p>
+        </div>
+
+        <div class="how-cell">
+          <div class="how-num">02</div>
+          <div class="how-step-label">Generate</div>
+          <div class="how-title">Build your study set</div>
+          <p class="how-desc">One click generates flashcards and quizzes from your content. Review the output, adjust what you like, and start studying immediately.</p>
+        </div>
+
+        <div class="how-cell">
+          <div class="how-num">03</div>
+          <div class="how-step-label">Execute</div>
+          <div class="how-title">Study and track</div>
+          <p class="how-desc">Flip cards, take tests, ask the companion. Your progress is tracked passively — you always know what needs more work without having to think about it.</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- STATS -->
+    <div class="stats-band">
+      <div class="stats-inner" style="max-width:1200px;margin:0 auto;padding:0 64px;">
+
+        <div class="stat-cell">
+          <div class="stat-num">12K+</div>
+          <div class="stat-label">Active students</div>
+          <div class="stat-bar"><div class="stat-bar-fill" style="width:78%"></div></div>
+        </div>
+
+        <div class="stat-cell">
+          <div class="stat-num">3×</div>
+          <div class="stat-label">Retention improvement</div>
+          <div class="stat-bar"><div class="stat-bar-fill" style="width:100%"></div></div>
+        </div>
+
+        <div class="stat-cell">
+          <div class="stat-num">50+</div>
+          <div class="stat-label">Subject areas</div>
+          <div class="stat-bar"><div class="stat-bar-fill" style="width:55%"></div></div>
+        </div>
+
+        <div class="stat-cell">
+          <div class="stat-num">4.9</div>
+          <div class="stat-label">Average rating</div>
+          <div class="stat-bar"><div class="stat-bar-fill" style="width:98%"></div></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- AI COMPANION -->
+    <section id="companion" class="section">
+      <div class="ai-grid">
+        <div class="ai-left">
+          <div class="section-tag">AI Unit · 04</div>
+          <div class="section-heading">The companion<br/>that asks back</div>
+          <div class="section-sub">— More than answers. Active dialogue.</div>
+          <p style="font-size:0.88rem;color:var(--text-mid);line-height:1.7;font-weight:300;max-width:400px;margin-bottom:28px;">Lumina's Study Corner doesn't just retrieve information — it engages. Ask a question, get an explanation. Ask again, and it checks if you understood. It's studying, not searching.</p>
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:12px;">
+            <li style="display:flex;align-items:center;gap:10px;font-size:0.82rem;color:var(--text-mid);">
+              <span style="width:16px;height:1px;background:var(--teal);flex-shrink:0;"></span>
+              Explains concepts in plain language
+            </li>
+            <li style="display:flex;align-items:center;gap:10px;font-size:0.82rem;color:var(--text-mid);">
+              <span style="width:16px;height:1px;background:var(--teal);flex-shrink:0;"></span>
+              Tests your understanding by asking back
+            </li>
+            <li style="display:flex;align-items:center;gap:10px;font-size:0.82rem;color:var(--text-mid);">
+              <span style="width:16px;height:1px;background:var(--teal);flex-shrink:0;"></span>
+              Creates flashcards from the conversation
+            </li>
+            <li style="display:flex;align-items:center;gap:10px;font-size:0.82rem;color:var(--text-mid);">
+              <span style="width:16px;height:1px;background:var(--teal);flex-shrink:0;"></span>
+              Knows your notes, not just the internet
+            </li>
+          </ul>
+        </div>
+        <div>
+          <div class="ai-window">
+            <div class="ai-window-bar">
+              <div class="ai-window-title">LUMINA · Study Corner · Session active</div>
+              <div class="ai-window-status">
+                <div class="status-dot"></div>
+                ONLINE
+              </div>
+            </div>
+            <div class="ai-window-body">
+              <div class="ai-msg user">
+                <div class="ai-msg-label">// USER INPUT</div>
+                Explain the difference between mitosis and meiosis.
+              </div>
+              <div class="ai-msg system">
+                <div class="ai-msg-label">// LUMINA RESPONSE</div>
+                Mitosis is your body's copy machine — it creates identical cells for growth and repair. Meiosis is for reproduction only: it halves the chromosome count to produce sperm and egg cells, shuffling the genetic deck in the process.
+              </div>
+              <div class="ai-msg user">
+                <div class="ai-msg-label">// USER INPUT</div>
+                So meiosis only happens in the gonads?
+              </div>
+              <div class="ai-msg system">
+                <div class="ai-msg-label">// LUMINA RESPONSE</div>
+                Correct. Want me to generate a flashcard pair to lock this in?
+              </div>
+            </div>
+            <div class="ai-input-row">
+              <input class="ai-input" type="text" placeholder="// INPUT QUERY" />
+              <button class="ai-send">SEND →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TESTIMONIALS -->
+    <section style="background:rgba(255,255,255,0.12);border-top:1px solid var(--border-t);border-bottom:1px solid var(--border-t);">
+      <div class="section">
+        <div class="section-tag">User reports</div>
+        <div class="section-heading">Field notes</div>
+        <div class="section-sub">— From students currently in the system</div>
+        <div class="testi-grid">
+
+          <div class="testi-cell">
+            <div class="testi-quote">"</div>
+            <p class="testi-text">I used to dread revision. Lumina turned my lecture slides into flashcards in minutes and the quiz feature caught every gap in my knowledge before the exam.</p>
+            <div class="testi-author">Sara M.</div>
+            <div class="testi-role">MEDICAL_STUDENT · YEAR_03</div>
+          </div>
+
+          <div class="testi-cell">
+            <div class="testi-quote">"</div>
+            <p class="testi-text">The Study Corner is genuinely different. It doesn't just give you answers — it asks you questions back. I retained so much more just by talking through the material.</p>
+            <div class="testi-author">James K.</div>
+            <div class="testi-role">COMP_SCI · FINAL_YEAR</div>
+          </div>
+
+          <div class="testi-cell">
+            <div class="testi-quote">"</div>
+            <p class="testi-text">It doesn't demand my attention. I open it, run my session, close it. That's exactly what studying should feel like — clean signal, no noise.</p>
+            <div class="testi-author">Priya D.</div>
+            <div class="testi-role">SELF_STUDY · LANGUAGES</div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <div class="cta-band">
+      <div class="cta-inner">
+        <div class="cta-text">
+          <div class="section-tag">Initialize</div>
+          <div class="cta-heading">
+            Begin your<br/>
+            <span class="line2">first session</span>
+          </div>
+          <div class="cta-note">FREE_ACCESS · NO_CARD · NO_CONFIG · WORKS_NOW</div>
+        </div>
+        <div class="cta-actions">
+          <button class="btn-cta main">Create free account</button>
+          <button class="btn-cta alt">View documentation</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer>
+      <div class="footer-inner">
+        <div>
+          <div class="footer-logo">LUMINA</div>
+          <div class="footer-system" style="margin-top:4px;">STUDY_SYSTEMS · BUILD_2026.1</div>
+        </div>
+        <ul class="footer-links">
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Terms</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+        <div class="footer-system">© 2026 Lumina. All rights reserved.</div>
+      </div>
+    </footer>
+
+  </div><!-- /wrapper -->
+</body>
+</html>

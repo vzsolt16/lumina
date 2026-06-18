@@ -1,0 +1,404 @@
+/* Studio — upload + generate feature screen. Built on the Lumina design
+   system (DESIGN.md): glass panels, hairline teal borders, sharp corners,
+   monospace system labels. No radius, no shadows, no warm tones. */
+
+.studio {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 56px 64px 88px;
+  min-height: calc(100vh - 60px);
+}
+
+.studio-head {
+  margin-bottom: 40px;
+}
+
+/* ── GLASS PANEL ──────────────────────────────────── */
+.panel {
+  border: 1px solid var(--border-t);
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(12px);
+  position: relative;
+}
+
+.panel-bar {
+  padding: 10px 16px;
+  background: rgba(62, 168, 200, 0.1);
+  border-bottom: 1px solid var(--border-t);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+
+.panel-status {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.panel-status.live {
+  color: var(--seafoam);
+}
+
+.panel-status.live .status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--seafoam);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.panel-body {
+  padding: 24px;
+}
+
+/* ── UPLOAD ───────────────────────────────────────── */
+.dropzone {
+  border: 1px dashed var(--border-t);
+  background: rgba(62, 168, 200, 0.04);
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.dropzone:hover,
+.dropzone.dragging {
+  background: rgba(62, 168, 200, 0.1);
+  border-color: var(--teal);
+}
+
+.dropzone-icon {
+  font-size: 1.6rem;
+  margin-bottom: 14px;
+}
+
+.dropzone-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 1.1rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dark);
+  margin-bottom: 8px;
+}
+
+.dropzone-hint {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: var(--text-light);
+}
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--border-t);
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.doc-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.doc-file {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: var(--text-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-id {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  color: var(--text-light);
+}
+
+.doc-badge {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  color: var(--seafoam);
+  border: 1px solid var(--border-t);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+/* ── ACTIONS ──────────────────────────────────────── */
+.studio-actions {
+  display: flex;
+  gap: 0;
+  margin: 28px 0 8px;
+}
+
+.studio-actions .btn + .btn {
+  margin-left: -1px;
+}
+
+.error-line {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: #c0556a;
+  margin-top: 10px;
+}
+
+/* ── GENERATION PANELS GRID ───────────────────────── */
+.gen-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 32px;
+}
+
+@media (max-width: 900px) {
+  .gen-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── PROGRESS ─────────────────────────────────────── */
+.progress-wrap {
+  padding: 8px 0 4px;
+}
+
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: var(--text-mid);
+  margin-bottom: 8px;
+}
+
+.progress-track {
+  height: 2px;
+  background: var(--border-t);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--teal);
+  transition: width 0.4s ease;
+}
+
+.gen-empty {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: var(--text-light);
+  line-height: 1.7;
+}
+
+/* ── FLASHCARD DECK ───────────────────────────────── */
+.deck-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 560px) {
+  .deck-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.flip-card {
+  background: transparent;
+  perspective: 1000px;
+  height: 170px;
+  cursor: pointer;
+}
+
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.5s;
+  transform-style: preserve-3d;
+}
+
+.flip-card.flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+
+.flip-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border: 1px solid var(--border-t);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.flip-front {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.flip-back {
+  background: rgba(62, 168, 200, 0.12);
+  transform: rotateY(180deg);
+}
+
+.flip-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: var(--teal);
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.flip-text {
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text-dark);
+}
+
+.flip-front .flip-text {
+  font-weight: 500;
+}
+
+.flip-back .flip-text {
+  font-weight: 400;
+  color: var(--text-mid);
+}
+
+/* ── QUIZ ─────────────────────────────────────────── */
+.quiz-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 1.2rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dark);
+  margin-bottom: 4px;
+}
+
+.quiz-score {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: var(--seafoam);
+  margin-bottom: 20px;
+}
+
+.quiz-q {
+  border: 1px solid var(--border-t);
+  background: rgba(255, 255, 255, 0.3);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.quiz-q-num {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  color: var(--teal);
+  margin-bottom: 10px;
+}
+
+.quiz-q-text {
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.92rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-dark);
+  margin-bottom: 16px;
+}
+
+.quiz-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border-t);
+  background: rgba(255, 255, 255, 0.25);
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.84rem;
+  color: var(--text-mid);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.quiz-opt:not(:disabled):hover {
+  background: rgba(62, 168, 200, 0.1);
+}
+
+.quiz-opt:disabled {
+  cursor: default;
+}
+
+.quiz-opt-letter {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--teal);
+  flex-shrink: 0;
+}
+
+.quiz-opt.correct {
+  background: rgba(90, 202, 174, 0.18);
+  border-color: var(--seafoam);
+  color: var(--text-dark);
+}
+
+.quiz-opt.correct .quiz-opt-letter {
+  color: var(--seafoam);
+}
+
+.quiz-opt.wrong {
+  background: rgba(192, 85, 106, 0.12);
+  border-color: rgba(192, 85, 106, 0.5);
+  color: var(--text-dark);
+}
+
+.quiz-opt.wrong .quiz-opt-letter {
+  color: #c0556a;
+}
+
+.quiz-feedback {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  margin-top: 6px;
+}
+
+.quiz-feedback.ok {
+  color: var(--seafoam);
+}
+
+.quiz-feedback.no {
+  color: #c0556a;
+}
