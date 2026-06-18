@@ -1,8 +1,8 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Lumina.Data;
 using Lumina.DTOs.Quiz;
 using Lumina.Models;
+using Lumina.Services.Ai;
 using Lumina.Services.AI;
 using Lumina.WebSockets;
 using Microsoft.AspNetCore.SignalR;
@@ -186,22 +186,7 @@ public class QuizService : IQuizService
 
         var response = await _aiService.GenerateAsync(prompt, QuizSchema, maxTokens: 1200);
 
-        try
-        {
-            var text = Regex.Replace(response, @"<think>.*?</think>", "", RegexOptions.Singleline).Trim();
-            var start = text.IndexOf('{');
-            var end = text.LastIndexOf('}');
-            var json = start >= 0 && end > start ? text[start..(end + 1)] : text;
-
-            var wrapper = JsonSerializer.Deserialize<GeneratedQuizDto>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                          ?? throw new Exception("Failed to deserialize questions.");
-            return wrapper.Questions;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to parse AI response: {Response}", response);
-            throw;
-        }
+        return AiJsonParser.Parse<GeneratedQuizDto>(response, _logger).Questions;
     }
 
     public async Task<IReadOnlyList<Quiz>> GetAllAsync(Guid documentId)

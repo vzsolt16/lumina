@@ -1,8 +1,8 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Lumina.Data;
 using Lumina.DTOs.Flashcard;
 using Lumina.Models;
+using Lumina.Services.Ai;
 using Lumina.Services.AI;
 using Lumina.WebSockets;
 using Microsoft.AspNetCore.SignalR;
@@ -166,22 +166,7 @@ public class FlashcardService : IFlashcardService
 
         var response = await _aiService.GenerateAsync(prompt, FlashcardSchema, maxTokens: 2000);
 
-        try
-        {
-            var text = Regex.Replace(response, @"<think>.*?</think>", "", RegexOptions.Singleline).Trim();
-            var start = text.IndexOf('{');
-            var end = text.LastIndexOf('}');
-            var json = start >= 0 && end > start ? text[start..(end + 1)] : text;
-
-            var wrapper = JsonSerializer.Deserialize<GeneratedFlashcardsDto>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                          ?? throw new Exception("Failed to deserialize flashcards.");
-            return wrapper.Flashcards;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to parse AI response: {Response}", response);
-            throw;
-        }
+        return AiJsonParser.Parse<GeneratedFlashcardsDto>(response, _logger).Flashcards;
     }
 
     public async Task<IReadOnlyList<Flashcard>> GetAllAsync(Guid documentId)
