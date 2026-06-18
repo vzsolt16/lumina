@@ -43,7 +43,8 @@ public class LuminaDbContext : DbContext
         modelBuilder.Entity<QuizJob>()
             .HasOne(qj => qj.Document)
             .WithMany()
-            .HasForeignKey(qj => qj.DocumentId);
+            .HasForeignKey(qj => qj.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<QuizJob>()
             .Property(qj => qj.Status)
@@ -52,7 +53,8 @@ public class LuminaDbContext : DbContext
         modelBuilder.Entity<FlashcardJob>()
             .HasOne(fj => fj.Document)
             .WithMany()
-            .HasForeignKey(fj => fj.DocumentId);
+            .HasForeignKey(fj => fj.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<FlashcardJob>()
             .Property(fj => fj.Status)

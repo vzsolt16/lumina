@@ -9,17 +9,18 @@ namespace Lumina.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _documentService;
+    private readonly ILogger<DocumentsController> _logger;
 
-    public DocumentsController(IDocumentService documentService)
+    public DocumentsController(IDocumentService documentService, ILogger<DocumentsController> logger)
     {
         _documentService = documentService;
+        _logger = logger;
     }
 
     [HttpPost]
     public async Task<ActionResult<UploadDocumentResponse>> Upload(
         IFormFile file)
     {
-        Console.WriteLine(file.FileName);
         if (file.Length == 0)
         {
             return BadRequest("File is empty.");
