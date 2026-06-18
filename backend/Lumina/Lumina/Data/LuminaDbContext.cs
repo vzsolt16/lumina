@@ -45,10 +45,18 @@ public class LuminaDbContext : DbContext
             .WithMany()
             .HasForeignKey(qj => qj.DocumentId);
 
+        modelBuilder.Entity<QuizJob>()
+            .Property(qj => qj.Status)
+            .HasConversion<string>();
+
         modelBuilder.Entity<FlashcardJob>()
             .HasOne(fj => fj.Document)
             .WithMany()
             .HasForeignKey(fj => fj.DocumentId);
+
+        modelBuilder.Entity<FlashcardJob>()
+            .Property(fj => fj.Status)
+            .HasConversion<string>();
 
         modelBuilder.Entity<Document>()
             .HasMany(d => d.ChatMessages)

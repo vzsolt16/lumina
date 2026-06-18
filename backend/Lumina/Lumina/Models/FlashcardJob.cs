@@ -6,7 +6,7 @@ public class FlashcardJob
     public Guid DocumentId { get; set; }
     public Document Document { get; set; } = null!;
 
-    public string Status { get; set; } = "Processing";
+    public JobStatus Status { get; set; } = JobStatus.Processing;
     public int Progress { get; set; }
 
     public string? ResultJson { get; set; }

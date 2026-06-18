@@ -1,5 +1,3 @@
-using Lumina.Models;
-
 namespace Lumina.Models;
 
 public class QuizJob
@@ -8,7 +6,7 @@ public class QuizJob
     public Guid DocumentId { get; set; }
     public Document Document { get; set; } = null!;
 
-    public string Status { get; set; } = "Processing"; // Processing, Completed, Failed
+    public JobStatus Status { get; set; } = JobStatus.Processing;
     public int Progress { get; set; }  // 0 - 100
 
     public string? ResultJson { get; set; }

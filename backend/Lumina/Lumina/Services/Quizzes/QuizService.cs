@@ -64,7 +64,7 @@ public class QuizService : IQuizService
         {
             Id = Guid.NewGuid(),
             DocumentId = documentId,
-            Status = "Processing",
+            Status = JobStatus.Processing,
             Progress = 0,
             CreatedAt = DateTime.UtcNow
         };
@@ -141,7 +141,7 @@ public class QuizService : IQuizService
 
             _db.Quizzes.Add(quiz);
             
-            job.Status = "Completed";
+            job.Status = JobStatus.Completed;
             job.Progress = 100;
             job.ResultJson = JsonSerializer.Serialize(finalQuizDto);
             job.CompletedAt = DateTime.UtcNow;
@@ -159,7 +159,7 @@ public class QuizService : IQuizService
             await timerCts.CancelAsync();
             await timerTask;
             _logger.LogError(ex, "Error processing quiz job {JobId}", jobId);
-            job.Status = "Failed";
+            job.Status = JobStatus.Failed;
             await _db.SaveChangesAsync(CancellationToken.None);
 
             await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Failed", new

@@ -61,7 +61,7 @@ public class FlashcardService : IFlashcardService
         {
             Id = Guid.NewGuid(),
             DocumentId = documentId,
-            Status = "Processing",
+            Status = JobStatus.Processing,
             Progress = 0,
             CreatedAt = DateTime.UtcNow
         };
@@ -123,7 +123,7 @@ public class FlashcardService : IFlashcardService
 
             _db.Flashcards.AddRange(flashcardEntities);
 
-            job.Status = "Completed";
+            job.Status = JobStatus.Completed;
             job.Progress = 100;
             job.ResultJson = JsonSerializer.Serialize(new GeneratedFlashcardsDto { Flashcards = flashcards });
             job.CompletedAt = DateTime.UtcNow;
@@ -141,7 +141,7 @@ public class FlashcardService : IFlashcardService
             await timerCts.CancelAsync();
             await timerTask;
             _logger.LogError(ex, "Error processing flashcard job {JobId}", jobId);
-            job.Status = "Failed";
+            job.Status = JobStatus.Failed;
             await _db.SaveChangesAsync(CancellationToken.None);
 
             await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Failed", new
