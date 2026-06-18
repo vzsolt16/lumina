@@ -1,3 +1,4 @@
+using Lumina.DTOs;
 using Lumina.Models;
 
 namespace Lumina.Services.Documents;
@@ -8,5 +9,5 @@ public interface IDocumentService
 
     Task<Document?> GetByIdAsync(Guid id);
 
-    Task<List<Document>> GetAllAsync();
+    Task<List<DocumentSummaryResponse>> GetAllAsync();
 }

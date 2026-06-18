@@ -1,4 +1,5 @@
 using Lumina.Data;
+using Lumina.DTOs;
 using Lumina.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -42,10 +43,16 @@ public class DocumentService : IDocumentService
             .FirstOrDefaultAsync(d => d.Id == id);
     }
 
-    public async Task<List<Document>> GetAllAsync()
+    public async Task<List<DocumentSummaryResponse>> GetAllAsync()
     {
         return await _db.Documents
             .OrderByDescending(d => d.UploadedAt)
+            .Select(d => new DocumentSummaryResponse
+            {
+                Id = d.Id,
+                FileName = d.FileName,
+                UploadedAt = d.UploadedAt
+            })
             .ToListAsync();
     }
 }

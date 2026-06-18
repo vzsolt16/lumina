@@ -44,7 +44,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<ActionResult<List<DocumentSummaryResponse>>> GetAll()
     {
         var documents = await _documentService.GetAllAsync();
 
