@@ -24,6 +24,12 @@ public class DocumentsController : ControllerBase
         {
             return BadRequest("File is empty.");
         }
+
+        const long MaxFileSize = 2 * 1024 * 1024;
+        if (file.Length > MaxFileSize)
+        {
+            return BadRequest("File too large (max 2 MB).");
+        }
         
         var allowedExtensions = new[] { ".txt", ".md" };
 
