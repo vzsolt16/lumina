@@ -1,9 +1,12 @@
+using Lumina.Extensions;
 using Lumina.Services.Flashcards;
 using Lumina.Services.Quizzes;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Lumina.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/documents/{documentId:guid}/flashcards")]
 public class FlashcardsController : ControllerBase
@@ -27,7 +30,7 @@ public class FlashcardsController : ControllerBase
     {
         try
         {
-            var job = await _flashcardService.CreateFlashcardJobAsync(documentId);
+            var job = await _flashcardService.CreateFlashcardJobAsync(documentId, User.GetUserId());
 
             await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
             {
@@ -49,7 +52,7 @@ public class FlashcardsController : ControllerBase
     {
         try
         {
-            var flashcards = await _flashcardService.GetAllAsync(documentId);
+            var flashcards = await _flashcardService.GetAllAsync(documentId, User.GetUserId());
             return Ok(flashcards);
         }
         catch (KeyNotFoundException)
@@ -61,7 +64,7 @@ public class FlashcardsController : ControllerBase
     [HttpGet("{flashcardId:guid}")]
     public async Task<IActionResult> GetById(Guid documentId, Guid flashcardId)
     {
-        var flashcard = await _flashcardService.GetByIdAsync(documentId, flashcardId);
+        var flashcard = await _flashcardService.GetByIdAsync(documentId, flashcardId, User.GetUserId());
         if (flashcard == null) return NotFound();
         return Ok(flashcard);
     }
@@ -69,7 +72,7 @@ public class FlashcardsController : ControllerBase
     [HttpDelete("{flashcardId:guid}")]
     public async Task<IActionResult> Delete(Guid documentId, Guid flashcardId)
     {
-        var deleted = await _flashcardService.DeleteAsync(documentId, flashcardId);
+        var deleted = await _flashcardService.DeleteAsync(documentId, flashcardId, User.GetUserId());
         if (!deleted) return NotFound();
         return NoContent();
     }

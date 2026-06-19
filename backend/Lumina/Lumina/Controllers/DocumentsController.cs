@@ -1,9 +1,12 @@
 using Lumina.DTOs;
+using Lumina.Extensions;
 using Lumina.Services.Documents;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Lumina.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/documents")]
 public class DocumentsController : ControllerBase
@@ -41,7 +44,7 @@ public class DocumentsController : ControllerBase
             return BadRequest("Only .txt and .md files are supported.");
         }
 
-        var document = await _documentService.UploadAsync(file);
+        var document = await _documentService.UploadAsync(file, User.GetUserId());
 
         return Ok(new UploadDocumentResponse
         {
@@ -53,7 +56,7 @@ public class DocumentsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<DocumentSummaryResponse>>> GetAll()
     {
-        var documents = await _documentService.GetAllAsync();
+        var documents = await _documentService.GetAllAsync(User.GetUserId());
 
         return Ok(documents);
     }
@@ -61,7 +64,7 @@ public class DocumentsController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var document = await _documentService.GetByIdAsync(id);
+        var document = await _documentService.GetByIdAsync(id, User.GetUserId());
 
         if (document is null)
         {

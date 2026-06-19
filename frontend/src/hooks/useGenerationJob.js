@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HubConnectionBuilder, HttpTransportType } from '@microsoft/signalr'
 import { generateFlashcards, generateQuiz } from '../api/client.js'
+import { getAccessToken } from '../api/authToken.js'
 
 // Per-kind wiring for the two SignalR hubs. Both emit Progress/Completed/Failed
 // and expect the client to join a group keyed by the job id after connecting.
@@ -62,9 +63,12 @@ export default function useGenerationJob(kind) {
         const connection = new HubConnectionBuilder()
           .withUrl(cfg.hubUrl, {
             // WebSockets only — skips the negotiate round-trip and keeps the
-            // dev proxy simple.
+            // dev proxy simple. The hub is [Authorize]'d, so SignalR appends the
+            // access token as the `access_token` query param (the only way to
+            // auth a WebSocket handshake from the browser).
             skipNegotiation: true,
             transport: HttpTransportType.WebSockets,
+            accessTokenFactory: () => getAccessToken(),
           })
           .withAutomaticReconnect()
           .build()

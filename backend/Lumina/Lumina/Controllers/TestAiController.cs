@@ -1,8 +1,10 @@
 using Lumina.Services.AI;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Lumina.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/test-ai")]
 public class TestAiController : ControllerBase

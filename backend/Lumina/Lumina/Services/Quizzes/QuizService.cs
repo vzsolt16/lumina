@@ -52,9 +52,9 @@ public class QuizService : IQuizService
         _logger = logger;
     }
 
-    public async Task<QuizJob> CreateQuizJobAsync(Guid documentId)
+    public async Task<QuizJob> CreateQuizJobAsync(Guid documentId, Guid userId)
     {
-        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId);
+        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId && d.UserId == userId);
         if (!documentExists)
         {
             throw new KeyNotFoundException($"Document {documentId} not found.");
@@ -189,9 +189,9 @@ public class QuizService : IQuizService
         return AiJsonParser.Parse<GeneratedQuizDto>(response, _logger).Questions;
     }
 
-    public async Task<IReadOnlyList<Quiz>> GetAllAsync(Guid documentId)
+    public async Task<IReadOnlyList<Quiz>> GetAllAsync(Guid documentId, Guid userId)
     {
-        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId);
+        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId && d.UserId == userId);
         if (!documentExists)
             throw new KeyNotFoundException($"Document {documentId} not found.");
 
@@ -201,18 +201,18 @@ public class QuizService : IQuizService
             .ToListAsync();
     }
 
-    public async Task<Quiz?> GetByIdAsync(Guid documentId, Guid quizId)
+    public async Task<Quiz?> GetByIdAsync(Guid documentId, Guid quizId, Guid userId)
     {
         return await _db.Quizzes
-            .Where(q => q.DocumentId == documentId && q.Id == quizId)
+            .Where(q => q.DocumentId == documentId && q.Id == quizId && q.Document.UserId == userId)
             .Include(q => q.Questions)
             .FirstOrDefaultAsync();
     }
 
-    public async Task<bool> DeleteAsync(Guid documentId, Guid quizId)
+    public async Task<bool> DeleteAsync(Guid documentId, Guid quizId, Guid userId)
     {
         var quiz = await _db.Quizzes
-            .FirstOrDefaultAsync(q => q.DocumentId == documentId && q.Id == quizId);
+            .FirstOrDefaultAsync(q => q.DocumentId == documentId && q.Id == quizId && q.Document.UserId == userId);
 
         if (quiz == null) return false;
 

@@ -14,7 +14,7 @@ public class DocumentService : IDocumentService
         _db = db;
     }
 
-    public async Task<Document> UploadAsync(IFormFile file)
+    public async Task<Document> UploadAsync(IFormFile file, Guid userId)
     {
         using var reader = new StreamReader(file.OpenReadStream());
 
@@ -23,6 +23,7 @@ public class DocumentService : IDocumentService
         var document = new Document
         {
             Id = Guid.NewGuid(),
+            UserId = userId,
             FileName = file.FileName,
             Content = content,
             ContentType = file.ContentType,
@@ -37,15 +38,16 @@ public class DocumentService : IDocumentService
         return document;
     }
 
-    public async Task<Document?> GetByIdAsync(Guid id)
+    public async Task<Document?> GetByIdAsync(Guid id, Guid userId)
     {
         return await _db.Documents
-            .FirstOrDefaultAsync(d => d.Id == id);
+            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
     }
 
-    public async Task<List<DocumentSummaryResponse>> GetAllAsync()
+    public async Task<List<DocumentSummaryResponse>> GetAllAsync(Guid userId)
     {
         return await _db.Documents
+            .Where(d => d.UserId == userId)
             .OrderByDescending(d => d.UploadedAt)
             .Select(d => new DocumentSummaryResponse
             {

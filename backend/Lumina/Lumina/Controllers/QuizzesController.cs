@@ -1,8 +1,11 @@
+using Lumina.Extensions;
 using Lumina.Services.Quizzes;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Lumina.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/documents/{documentId:guid}/quizzes")]
 public class QuizzesController : ControllerBase
@@ -26,7 +29,7 @@ public class QuizzesController : ControllerBase
     {
         try
         {
-            var job = await _quizService.CreateQuizJobAsync(documentId);
+            var job = await _quizService.CreateQuizJobAsync(documentId, User.GetUserId());
 
             await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
             {
@@ -48,7 +51,7 @@ public class QuizzesController : ControllerBase
     {
         try
         {
-            var quizzes = await _quizService.GetAllAsync(documentId);
+            var quizzes = await _quizService.GetAllAsync(documentId, User.GetUserId());
             return Ok(quizzes);
         }
         catch (KeyNotFoundException)
@@ -60,7 +63,7 @@ public class QuizzesController : ControllerBase
     [HttpGet("{quizId:guid}")]
     public async Task<IActionResult> GetById(Guid documentId, Guid quizId)
     {
-        var quiz = await _quizService.GetByIdAsync(documentId, quizId);
+        var quiz = await _quizService.GetByIdAsync(documentId, quizId, User.GetUserId());
         if (quiz == null) return NotFound();
         return Ok(quiz);
     }
@@ -68,7 +71,7 @@ public class QuizzesController : ControllerBase
     [HttpDelete("{quizId:guid}")]
     public async Task<IActionResult> Delete(Guid documentId, Guid quizId)
     {
-        var deleted = await _quizService.DeleteAsync(documentId, quizId);
+        var deleted = await _quizService.DeleteAsync(documentId, quizId, User.GetUserId());
         if (!deleted) return NotFound();
         return NoContent();
     }

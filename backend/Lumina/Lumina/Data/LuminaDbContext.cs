@@ -1,14 +1,18 @@
 using Lumina.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lumina.Data;
 
-public class LuminaDbContext : DbContext
+public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
 {
     public LuminaDbContext(DbContextOptions<LuminaDbContext> options)
         : base(options)
     {
     }
+
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     public DbSet<Document> Documents => Set<Document>();
 
@@ -27,6 +31,24 @@ public class LuminaDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<Document>()
+            .HasOne(d => d.User)
+            .WithMany(u => u.Documents)
+            .HasForeignKey(d => d.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Document>()
+            .HasIndex(d => d.UserId);
+
+        modelBuilder.Entity<RefreshToken>()
+            .HasOne(rt => rt.User)
+            .WithMany(u => u.RefreshTokens)
+            .HasForeignKey(rt => rt.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RefreshToken>()
+            .HasIndex(rt => rt.TokenHash);
 
         modelBuilder.Entity<Document>()
             .HasMany(d => d.Flashcards)

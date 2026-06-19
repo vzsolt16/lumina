@@ -4,6 +4,12 @@ public class Document
 {
     public Guid Id { get; set; }
 
+    // Owner. Every Document belongs to exactly one user; Quizzes, Flashcards
+    // and ChatMessages inherit ownership through their parent Document.
+    public Guid UserId { get; set; }
+
+    public ApplicationUser User { get; set; } = null!;
+
     public string FileName { get; set; } = string.Empty;
 
     public string Content { get; set; } = string.Empty;

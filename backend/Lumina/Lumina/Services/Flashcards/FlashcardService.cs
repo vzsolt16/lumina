@@ -49,9 +49,9 @@ public class FlashcardService : IFlashcardService
         _logger = logger;
     }
 
-    public async Task<FlashcardJob> CreateFlashcardJobAsync(Guid documentId)
+    public async Task<FlashcardJob> CreateFlashcardJobAsync(Guid documentId, Guid userId)
     {
-        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId);
+        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId && d.UserId == userId);
         if (!documentExists)
         {
             throw new KeyNotFoundException($"Document {documentId} not found.");
@@ -169,9 +169,9 @@ public class FlashcardService : IFlashcardService
         return AiJsonParser.Parse<GeneratedFlashcardsDto>(response, _logger).Flashcards;
     }
 
-    public async Task<IReadOnlyList<Flashcard>> GetAllAsync(Guid documentId)
+    public async Task<IReadOnlyList<Flashcard>> GetAllAsync(Guid documentId, Guid userId)
     {
-        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId);
+        var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId && d.UserId == userId);
         if (!documentExists)
             throw new KeyNotFoundException($"Document {documentId} not found.");
 
@@ -180,16 +180,16 @@ public class FlashcardService : IFlashcardService
             .ToListAsync();
     }
 
-    public async Task<Flashcard?> GetByIdAsync(Guid documentId, Guid flashcardId)
+    public async Task<Flashcard?> GetByIdAsync(Guid documentId, Guid flashcardId, Guid userId)
     {
         return await _db.Flashcards
-            .FirstOrDefaultAsync(f => f.DocumentId == documentId && f.Id == flashcardId);
+            .FirstOrDefaultAsync(f => f.DocumentId == documentId && f.Id == flashcardId && f.Document.UserId == userId);
     }
 
-    public async Task<bool> DeleteAsync(Guid documentId, Guid flashcardId)
+    public async Task<bool> DeleteAsync(Guid documentId, Guid flashcardId, Guid userId)
     {
         var flashcard = await _db.Flashcards
-            .FirstOrDefaultAsync(f => f.DocumentId == documentId && f.Id == flashcardId);
+            .FirstOrDefaultAsync(f => f.DocumentId == documentId && f.Id == flashcardId && f.Document.UserId == userId);
 
         if (flashcard == null) return false;
 

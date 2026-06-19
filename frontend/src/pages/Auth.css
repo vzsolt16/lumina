@@ -1,0 +1,122 @@
+/* Auth screens — login / register. Reuses the Gen X Soft Club tokens. */
+
+.auth-wrap {
+  min-height: calc(100vh - 60px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--panel);
+  border: 1px solid var(--border-w);
+  backdrop-filter: blur(16px);
+  padding: 40px;
+  box-shadow: 0 20px 60px -30px rgba(15, 42, 56, 0.4);
+}
+
+.auth-card .section-tag {
+  margin-bottom: 12px;
+}
+
+.auth-card .section-heading {
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  margin-bottom: 6px;
+}
+
+.auth-card .section-sub {
+  margin-bottom: 32px;
+}
+
+.auth-field {
+  margin-bottom: 20px;
+}
+
+.auth-label {
+  display: block;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-mid);
+  margin-bottom: 8px;
+}
+
+.auth-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--border-t);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.auth-input:focus {
+  border-color: var(--teal);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.auth-hint {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: var(--text-light);
+  margin-top: -8px;
+  margin-bottom: 20px;
+}
+
+.auth-error {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.08);
+  border: 1px solid rgba(192, 57, 43, 0.25);
+  padding: 10px 12px;
+  margin-bottom: 20px;
+  word-break: break-word;
+}
+
+.auth-switch {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-t);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: var(--text-mid);
+  text-align: center;
+}
+
+.auth-switch a {
+  color: var(--teal2);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-switch a:hover {
+  text-decoration: underline;
+}
+
+.auth-booting {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  color: var(--text-light);
+  animation: pulse 1.6s ease-in-out infinite;
+}

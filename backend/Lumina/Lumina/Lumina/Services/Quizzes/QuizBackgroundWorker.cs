@@ -22,15 +22,20 @@ public class QuizBackgroundWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var workItem = await _taskQueue.DequeueAsync(stoppingToken);
-
             try
             {
+                var workItem = await _taskQueue.DequeueAsync(stoppingToken);
                 await workItem(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Normal shutdown: the stopping token fired while we were waiting
+                // on the queue or running a work item. Exit the loop quietly.
+                break;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred executing {WorkItem}.", nameof(workItem));
+                _logger.LogError(ex, "Error occurred executing background work item.");
             }
         }
 
