@@ -81,7 +81,10 @@
 }
 
 .dropzone-icon {
-  font-size: 1.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--teal);
   margin-bottom: 14px;
 }
 

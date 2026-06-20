@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { UploadIcon } from './icons.jsx'
 
 const ALLOWED = ['.txt', '.md']
 
@@ -50,7 +51,7 @@ export default function FileUpload({ onFile, disabled }) {
           }
         }}
       >
-        <div className="dropzone-icon">📄</div>
+        <div className="dropzone-icon"><UploadIcon size={28} /></div>
         <div className="dropzone-title">Drop your notes here</div>
         <div className="dropzone-hint">CLICK_OR_DRAG · FORMAT: .TXT / .MD</div>
         <input

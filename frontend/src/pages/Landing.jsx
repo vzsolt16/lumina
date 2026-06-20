@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import Nav from '../components/Nav.jsx'
 import Footer from '../components/Footer.jsx'
+import { NotesIcon, FlashcardsIcon, QuizIcon, ChatIcon } from '../components/icons.jsx'
 import './Landing.css'
 
 const TICKER_ITEMS = [
@@ -10,10 +11,10 @@ const TICKER_ITEMS = [
 ]
 
 const FEATURES = [
-  { num: '01 // NOTES', icon: '📝', name: 'Notes', desc: 'Clean, distraction-free writing. Organise your material the way your mind works — Lumina keeps it structured without getting in the way.' },
-  { num: '02 // FLASH', icon: '🃏', name: 'Flashcards', desc: 'Auto-generated or hand-crafted. Spaced repetition built in. Study the right cards at the right time — the system decides, you focus on learning.' },
-  { num: '03 // QUIZ', icon: '✏️', name: 'Quizzes', desc: 'Multiple choice, short answer — generated from your notes. Find the gaps before the exam does.' },
-  { num: '04 // COMP', icon: '💬', name: 'Study Corner', desc: 'An AI companion that explains, quizzes back, and talks concepts through. Not a chatbot. A study partner that knows your material.' },
+  { num: '01 // NOTES', icon: NotesIcon, name: 'Notes', desc: 'Clean, distraction-free writing. Organise your material the way your mind works — Lumina keeps it structured without getting in the way.' },
+  { num: '02 // FLASH', icon: FlashcardsIcon, name: 'Flashcards', desc: 'Auto-generated or hand-crafted. Spaced repetition built in. Study the right cards at the right time — the system decides, you focus on learning.' },
+  { num: '03 // QUIZ', icon: QuizIcon, name: 'Quizzes', desc: 'Multiple choice, short answer — generated from your notes. Find the gaps before the exam does.' },
+  { num: '04 // COMP', icon: ChatIcon, name: 'Study Corner', desc: 'An AI companion that explains, quizzes back, and talks concepts through. Not a chatbot. A study partner that knows your material.' },
 ]
 
 const STEPS = [
@@ -129,15 +130,18 @@ export default function Landing() {
           <div className="section-heading">Study tools.<br />Built for focus.</div>
           <div className="section-sub">— Four components, one coherent system</div>
           <div className="features-grid">
-            {FEATURES.map((f) => (
+            {FEATURES.map((f) => {
+              const Icon = f.icon
+              return (
               <div className="feat-cell" key={f.num}>
                 <div className="feat-num">{f.num}</div>
-                <div className="feat-icon-wrap">{f.icon}</div>
+                <div className="feat-icon-wrap"><Icon /></div>
                 <div className="feat-name">{f.name}</div>
                 <p className="feat-desc">{f.desc}</p>
                 <div className="feat-cell-footer">MODULE_STATUS: ACTIVE</div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </section>

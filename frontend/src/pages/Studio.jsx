@@ -5,6 +5,7 @@ import FileUpload from '../components/FileUpload.jsx'
 import GenerationPanel from '../components/GenerationPanel.jsx'
 import FlashcardDeck from '../components/FlashcardDeck.jsx'
 import QuizView from '../components/QuizView.jsx'
+import { FileIcon } from '../components/icons.jsx'
 import useGenerationJob from '../hooks/useGenerationJob.js'
 import { uploadDocument } from '../api/client.js'
 import './Studio.css'
@@ -66,8 +67,8 @@ export default function Studio() {
             ) : (
               <div className="doc-row">
                 <div className="doc-meta">
-                  <span className="dropzone-icon" style={{ margin: 0, fontSize: '1.2rem' }}>
-                    📄
+                  <span className="dropzone-icon" style={{ margin: 0 }}>
+                    <FileIcon size={18} />
                   </span>
                   <div style={{ minWidth: 0 }}>
                     <div className="doc-file">{doc.fileName}</div>
