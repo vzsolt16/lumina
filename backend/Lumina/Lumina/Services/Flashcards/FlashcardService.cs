@@ -169,7 +169,7 @@ public class FlashcardService : IFlashcardService
         return AiJsonParser.Parse<GeneratedFlashcardsDto>(response, _logger).Flashcards;
     }
 
-    public async Task<IReadOnlyList<Flashcard>> GetAllAsync(Guid documentId, Guid userId)
+    public async Task<IReadOnlyList<FlashcardResponse>> GetAllAsync(Guid documentId, Guid userId)
     {
         var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId && d.UserId == userId);
         if (!documentExists)
@@ -177,14 +177,27 @@ public class FlashcardService : IFlashcardService
 
         return await _db.Flashcards
             .Where(f => f.DocumentId == documentId)
+            .Select(ToResponse)
             .ToListAsync();
     }
 
-    public async Task<Flashcard?> GetByIdAsync(Guid documentId, Guid flashcardId, Guid userId)
+    public async Task<FlashcardResponse?> GetByIdAsync(Guid documentId, Guid flashcardId, Guid userId)
     {
         return await _db.Flashcards
-            .FirstOrDefaultAsync(f => f.DocumentId == documentId && f.Id == flashcardId && f.Document.UserId == userId);
+            .Where(f => f.DocumentId == documentId && f.Id == flashcardId && f.Document.UserId == userId)
+            .Select(ToResponse)
+            .FirstOrDefaultAsync();
     }
+
+    // Projects to a DTO so we don't serialize the entity (and its Document
+    // navigation) out to the client.
+    private static readonly System.Linq.Expressions.Expression<Func<Flashcard, FlashcardResponse>> ToResponse =
+        f => new FlashcardResponse
+        {
+            Id = f.Id,
+            Question = f.Question,
+            Answer = f.Answer,
+        };
 
     public async Task<bool> DeleteAsync(Guid documentId, Guid flashcardId, Guid userId)
     {

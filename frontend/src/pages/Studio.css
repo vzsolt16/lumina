@@ -150,6 +150,109 @@
   white-space: nowrap;
 }
 
+/* ── DOCUMENT LIBRARY ─────────────────────────────── */
+.doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.doc-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-t);
+  background: rgba(255, 255, 255, 0.3);
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+  min-width: 0;
+}
+
+.doc-card:hover {
+  background: rgba(62, 168, 200, 0.1);
+  border-color: var(--teal);
+}
+
+.doc-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--teal);
+  flex-shrink: 0;
+}
+
+.doc-card-body {
+  min-width: 0;
+}
+
+/* ── DOCUMENT WORKSPACE ───────────────────────────── */
+.doc-ws-head {
+  margin-bottom: 24px;
+}
+
+.doc-back {
+  display: inline-block;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: var(--text-light);
+  text-decoration: none;
+  margin-bottom: 16px;
+  transition: color 0.15s;
+}
+
+.doc-back:hover {
+  color: var(--teal);
+}
+
+.doc-ws-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.doc-ws-title .doc-file {
+  font-size: 1.3rem;
+}
+
+.doc-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-t);
+  margin-bottom: 24px;
+}
+
+.doc-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  margin-bottom: -1px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.doc-tab:hover {
+  color: var(--teal);
+}
+
+.doc-tab.active {
+  color: var(--teal);
+  background: rgba(62, 168, 200, 0.1);
+  border-color: var(--border-t);
+  border-bottom: 1px solid transparent;
+}
+
 /* ── ACTIONS ──────────────────────────────────────── */
 .studio-actions {
   display: flex;

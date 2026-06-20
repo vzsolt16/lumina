@@ -189,7 +189,7 @@ public class QuizService : IQuizService
         return AiJsonParser.Parse<GeneratedQuizDto>(response, _logger).Questions;
     }
 
-    public async Task<IReadOnlyList<Quiz>> GetAllAsync(Guid documentId, Guid userId)
+    public async Task<IReadOnlyList<QuizResponse>> GetAllAsync(Guid documentId, Guid userId)
     {
         var documentExists = await _db.Documents.AnyAsync(d => d.Id == documentId && d.UserId == userId);
         if (!documentExists)
@@ -197,17 +197,36 @@ public class QuizService : IQuizService
 
         return await _db.Quizzes
             .Where(q => q.DocumentId == documentId)
-            .Include(q => q.Questions)
+            .Select(ToResponse)
             .ToListAsync();
     }
 
-    public async Task<Quiz?> GetByIdAsync(Guid documentId, Guid quizId, Guid userId)
+    public async Task<QuizResponse?> GetByIdAsync(Guid documentId, Guid quizId, Guid userId)
     {
         return await _db.Quizzes
             .Where(q => q.DocumentId == documentId && q.Id == quizId && q.Document.UserId == userId)
-            .Include(q => q.Questions)
+            .Select(ToResponse)
             .FirstOrDefaultAsync();
     }
+
+    // Projects the quiz graph to a DTO. Returning the entity directly would
+    // cycle during JSON serialization (Quiz -> Questions -> Quiz).
+    private static readonly System.Linq.Expressions.Expression<Func<Quiz, QuizResponse>> ToResponse =
+        q => new QuizResponse
+        {
+            Id = q.Id,
+            Title = q.Title,
+            Questions = q.Questions.Select(qq => new QuizQuestionResponse
+            {
+                Id = qq.Id,
+                Question = qq.Question,
+                AnswerA = qq.AnswerA,
+                AnswerB = qq.AnswerB,
+                AnswerC = qq.AnswerC,
+                AnswerD = qq.AnswerD,
+                CorrectAnswer = qq.CorrectAnswer,
+            }).ToList()
+        };
 
     public async Task<bool> DeleteAsync(Guid documentId, Guid quizId, Guid userId)
     {

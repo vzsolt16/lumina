@@ -126,6 +126,19 @@ export function refreshSession() {
 /* ─── Documents / generation ───────────────────────────────────────── */
 
 /**
+ * List the current user's documents (newest-first ordering is up to the caller).
+ * @returns {Promise<Array<{ id: string, fileName: string, uploadedAt: string }>>}
+ */
+export function getDocuments() {
+  return request('/api/documents')
+}
+
+/** Fetch a single document by id. */
+export function getDocument(id) {
+  return request(`/api/documents/${id}`)
+}
+
+/**
  * Upload a .txt or .md file.
  * @returns {Promise<{ id: string, fileName: string }>}
  */

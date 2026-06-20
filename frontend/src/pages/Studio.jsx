@@ -1,44 +1,54 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import Nav from '../components/Nav.jsx'
 import Footer from '../components/Footer.jsx'
 import FileUpload from '../components/FileUpload.jsx'
-import GenerationPanel from '../components/GenerationPanel.jsx'
-import FlashcardDeck from '../components/FlashcardDeck.jsx'
-import QuizView from '../components/QuizView.jsx'
 import { FileIcon } from '../components/icons.jsx'
-import useGenerationJob from '../hooks/useGenerationJob.js'
-import { uploadDocument } from '../api/client.js'
+import { getDocuments, uploadDocument } from '../api/client.js'
 import './Studio.css'
 
+function formatDate(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString()
+}
+
 export default function Studio() {
-  const [doc, setDoc] = useState(null) // { id, fileName }
+  const navigate = useNavigate()
+  const [docs, setDocs] = useState(null) // null = loading
+  const [loadError, setLoadError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
 
-  const flashcards = useGenerationJob('flashcard')
-  const quiz = useGenerationJob('quiz')
+  // Auto-fetch the user's documents on entry.
+  useEffect(() => {
+    let cancelled = false
+    getDocuments()
+      .then((list) => {
+        if (!cancelled) setDocs(Array.isArray(list) ? list : [])
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setDocs([])
+          setLoadError(err?.message || 'Could not load documents.')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function handleFile(file) {
     setUploading(true)
     setUploadError('')
-    setDoc(null)
-    flashcards.reset()
-    quiz.reset()
     try {
       const result = await uploadDocument(file)
-      setDoc(result)
+      navigate(`/studio/${result.id}`)
     } catch (err) {
       setUploadError(err?.message || 'Upload failed.')
-    } finally {
       setUploading(false)
     }
   }
-
-  const busy =
-    flashcards.status === 'starting' ||
-    flashcards.status === 'processing' ||
-    quiz.status === 'starting' ||
-    quiz.status === 'processing'
 
   return (
     <>
@@ -46,105 +56,61 @@ export default function Studio() {
 
       <div className="studio">
         <div className="studio-head">
-          <div className="section-tag">Studio · Generate</div>
-          <div className="section-heading">Build your<br />study set</div>
+          <div className="section-tag">Studio · Library</div>
+          <div className="section-heading">Your<br />documents</div>
           <div className="section-sub">
-            — Upload your notes, then choose what to generate
+            — Pick a document to study, or upload new material
           </div>
         </div>
 
-        {/* STEP 01 — UPLOAD */}
+        {/* UPLOAD */}
         <div className="panel">
           <div className="panel-bar">
-            <div className="panel-title">01 · Input · Upload material</div>
+            <div className="panel-title">Input · Upload material</div>
             <div className="panel-status">
-              {doc ? 'LOADED' : uploading ? 'UPLOADING' : 'AWAITING_FILE'}
+              {uploading ? 'UPLOADING' : 'AWAITING_FILE'}
             </div>
           </div>
           <div className="panel-body">
-            {!doc ? (
-              <FileUpload onFile={handleFile} disabled={uploading} />
-            ) : (
-              <div className="doc-row">
-                <div className="doc-meta">
-                  <span className="dropzone-icon" style={{ margin: 0 }}>
-                    <FileIcon size={18} />
-                  </span>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="doc-file">{doc.fileName}</div>
-                    <div className="doc-id">DOC_ID: {doc.id}</div>
-                  </div>
-                </div>
-                <span className="doc-badge">PROCESSED · OK</span>
-              </div>
-            )}
+            <FileUpload onFile={handleFile} disabled={uploading} />
             {uploadError && <div className="error-line">// ERROR: {uploadError}</div>}
-
-            {doc && (
-              <button
-                className="btn ghost"
-                style={{ marginTop: '20px' }}
-                onClick={() => {
-                  setDoc(null)
-                  setUploadError('')
-                  flashcards.reset()
-                  quiz.reset()
-                }}
-                disabled={busy}
-              >
-                Upload different file
-              </button>
-            )}
           </div>
         </div>
 
-        {/* STEP 02 — CHOOSE WHAT TO GENERATE */}
-        {doc && (
-          <>
-            <div className="studio-actions">
-              <button
-                className="btn primary"
-                onClick={() => flashcards.start(doc.id)}
-                disabled={
-                  flashcards.status === 'starting' ||
-                  flashcards.status === 'processing'
-                }
-              >
-                {flashcards.status === 'completed'
-                  ? 'Regenerate flashcards'
-                  : 'Generate flashcards'}
-              </button>
-              <button
-                className="btn ghost"
-                onClick={() => quiz.start(doc.id)}
-                disabled={
-                  quiz.status === 'starting' || quiz.status === 'processing'
-                }
-              >
-                {quiz.status === 'completed' ? 'Regenerate quiz' : 'Generate quiz'}
-              </button>
+        {/* DOCUMENT LIBRARY */}
+        <div className="panel" style={{ marginTop: '24px' }}>
+          <div className="panel-bar">
+            <div className="panel-title">Library · Documents</div>
+            <div className="panel-status">
+              {docs === null ? 'LOADING' : `${docs.length} DOC(S)`}
             </div>
-
-            {/* STEP 03 — RESULTS */}
-            <div className="gen-grid">
-              <GenerationPanel
-                title="02 · Flashcards"
-                job={flashcards}
-                emptyHint="// NO_DECK_YET — run 'Generate flashcards' to build a 10-card deck. Click any card to flip."
-              >
-                <FlashcardDeck cards={flashcards.result} />
-              </GenerationPanel>
-
-              <GenerationPanel
-                title="03 · Quiz"
-                job={quiz}
-                emptyHint="// NO_QUIZ_YET — run 'Generate quiz' for 5 multiple-choice questions. Pick an answer to check it."
-              >
-                <QuizView quiz={quiz.result} />
-              </GenerationPanel>
-            </div>
-          </>
-        )}
+          </div>
+          <div className="panel-body">
+            {docs === null ? (
+              <div className="gen-empty">// LOADING_DOCUMENTS…</div>
+            ) : loadError ? (
+              <div className="error-line">// ERROR: {loadError}</div>
+            ) : docs.length === 0 ? (
+              <div className="gen-empty">
+                // NO_DOCUMENTS_YET — upload a .txt or .md file above to get started.
+              </div>
+            ) : (
+              <div className="doc-grid">
+                {docs.map((d) => (
+                  <Link key={d.id} to={`/studio/${d.id}`} className="doc-card">
+                    <span className="doc-card-icon">
+                      <FileIcon size={20} />
+                    </span>
+                    <div className="doc-card-body">
+                      <div className="doc-file">{d.fileName}</div>
+                      <div className="doc-id">UPLOADED: {formatDate(d.uploadedAt)}</div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <Footer />
