@@ -48,7 +48,8 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<RefreshToken>()
-            .HasIndex(rt => rt.TokenHash);
+            .HasIndex(rt => rt.TokenHash)
+            .IsUnique();
 
         modelBuilder.Entity<Document>()
             .HasMany(d => d.Flashcards)

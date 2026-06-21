@@ -22,11 +22,11 @@ public class DocumentsController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<UploadDocumentResponse>> Upload(
-        IFormFile file)
+        IFormFile? file)
     {
-        if (file.Length == 0)
+        if (file is null || file.Length == 0)
         {
-            return BadRequest("File is empty.");
+            return BadRequest("No file provided.");
         }
 
         const long MaxFileSize = 2 * 1024 * 1024;

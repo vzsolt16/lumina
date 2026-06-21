@@ -1,5 +1,8 @@
+using System.Text.Json;
 using Lumina.Data;
+using Lumina.DTOs.Flashcard;
 using Lumina.Extensions;
+using Lumina.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -26,14 +29,29 @@ public class FlashcardHub : Hub
         }
 
         var userId = Context.User!.GetUserId();
-        var owned = await _db.FlashcardJobs
-            .AnyAsync(j => j.Id == jobId && j.Document.UserId == userId);
+        var job = await _db.FlashcardJobs
+            .FirstOrDefaultAsync(j => j.Id == jobId && j.Document.UserId == userId);
 
-        if (!owned)
+        if (job is null)
         {
             throw new HubException("You are not authorized to join this job.");
         }
 
+        // Join first so we never miss a terminal event fired while we're joining.
         await Groups.AddToGroupAsync(Context.ConnectionId, flashcardJobId);
+
+        // If the job already finished before the client joined, the terminal
+        // event was broadcast to an empty group and lost. Replay it to this
+        // connection so the client doesn't wait forever. (A duplicate is
+        // harmless and far better than a missed completion.)
+        if (job.Status == JobStatus.Completed && job.ResultJson is not null)
+        {
+            var result = JsonSerializer.Deserialize<GeneratedFlashcardsDto>(job.ResultJson);
+            await Clients.Caller.SendAsync("Completed", new { status = "completed", flashcards = result?.Flashcards });
+        }
+        else if (job.Status == JobStatus.Failed)
+        {
+            await Clients.Caller.SendAsync("Failed", new { status = "failed", error = "Generation failed." });
+        }
     }
 }

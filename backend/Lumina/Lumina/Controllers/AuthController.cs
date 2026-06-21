@@ -83,14 +83,38 @@ public class AuthController : ControllerBase
             .Include(rt => rt.User)
             .FirstOrDefaultAsync(rt => rt.TokenHash == hash);
 
-        if (stored is null || !stored.IsActive)
+        if (stored is null)
         {
             return Unauthorized("Invalid or expired refresh token.");
         }
 
-        // Rotate: revoke the presented token before issuing a replacement.
-        stored.RevokedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        // Reuse detection: a token that was already revoked is being replayed.
+        // Treat it as theft and revoke every active token for the user so an
+        // attacker's rotated chain dies alongside the victim's.
+        if (stored.RevokedAt is not null)
+        {
+            await _db.RefreshTokens
+                .Where(rt => rt.UserId == stored.UserId && rt.RevokedAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(rt => rt.RevokedAt, DateTime.UtcNow));
+            return Unauthorized("Invalid or expired refresh token.");
+        }
+
+        if (DateTime.UtcNow >= stored.ExpiresAt)
+        {
+            return Unauthorized("Invalid or expired refresh token.");
+        }
+
+        // Atomic, conditional rotation: only the request that flips RevokedAt
+        // from null wins. Two concurrent refreshes with the same token can't
+        // both mint a replacement — the loser gets 0 rows and is rejected.
+        var rotated = await _db.RefreshTokens
+            .Where(rt => rt.Id == stored.Id && rt.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(rt => rt.RevokedAt, DateTime.UtcNow));
+
+        if (rotated == 0)
+        {
+            return Unauthorized("Invalid or expired refresh token.");
+        }
 
         return await IssueTokensAsync(stored.User);
     }
