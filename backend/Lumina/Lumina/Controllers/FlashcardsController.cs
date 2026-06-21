@@ -32,12 +32,20 @@ public class FlashcardsController : ControllerBase
         {
             var job = await _flashcardService.CreateFlashcardJobAsync(documentId, User.GetUserId());
 
-            await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
+            var enqueued = _taskQueue.TryEnqueue(async token =>
             {
                 using var scope = _scopeFactory.CreateScope();
                 var scopedFlashcardService = scope.ServiceProvider.GetRequiredService<IFlashcardService>();
                 await scopedFlashcardService.ProcessFlashcardJobAsync(job.Id, token);
             });
+
+            if (!enqueued)
+            {
+                // Queue is full: shed load instead of blocking the request thread.
+                await _flashcardService.MarkJobFailedAsync(job.Id);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    new { error = "The server is busy. Please try again shortly." });
+            }
 
             return Ok(new { flashcardJobId = job.Id, status = job.Status });
         }

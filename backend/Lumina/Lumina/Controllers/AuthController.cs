@@ -2,6 +2,7 @@ using Lumina.Data;
 using Lumina.DTOs.Auth;
 using Lumina.Models;
 using Lumina.Services.Auth;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Options;
 
 namespace Lumina.Controllers;
 
+[AllowAnonymous]
 [ApiController]
 [Route("api/auth")]
 public class AuthController : ControllerBase

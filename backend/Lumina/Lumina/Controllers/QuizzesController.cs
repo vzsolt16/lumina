@@ -31,12 +31,20 @@ public class QuizzesController : ControllerBase
         {
             var job = await _quizService.CreateQuizJobAsync(documentId, User.GetUserId());
 
-            await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
+            var enqueued = _taskQueue.TryEnqueue(async token =>
             {
                 using var scope = _scopeFactory.CreateScope();
                 var scopedQuizService = scope.ServiceProvider.GetRequiredService<IQuizService>();
                 await scopedQuizService.ProcessQuizJobAsync(job.Id, token);
             });
+
+            if (!enqueued)
+            {
+                // Queue is full: shed load instead of blocking the request thread.
+                await _quizService.MarkJobFailedAsync(job.Id);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    new { error = "The server is busy. Please try again shortly." });
+            }
 
             return Ok(new { quizId = job.Id, status = job.Status });
         }

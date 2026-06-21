@@ -8,6 +8,7 @@ using Lumina.Services.Flashcards;
 using Lumina.Services.Quizzes;
 using Lumina.WebSockets;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -101,7 +102,15 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+// Secure-by-default: every endpoint requires an authenticated user unless it
+// opts out with [AllowAnonymous]. A new controller added without [Authorize]
+// is protected automatically instead of silently anonymous.
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
 
 builder.Services.AddScoped<ITokenService, TokenService>();
 
@@ -123,7 +132,7 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.MapOpenApi().AllowAnonymous();
 }
 
 app.UseHttpsRedirection();

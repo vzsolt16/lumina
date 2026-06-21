@@ -4,7 +4,9 @@ namespace Lumina.Services.Quizzes;
 
 public interface IBackgroundTaskQueue
 {
-    ValueTask QueueBackgroundWorkItemAsync(Func<CancellationToken, ValueTask> workItem);
+    // Returns false when the queue is full instead of blocking the caller, so a
+    // backed-up queue sheds load (503) rather than hanging the request thread.
+    bool TryEnqueue(Func<CancellationToken, ValueTask> workItem);
     ValueTask<Func<CancellationToken, ValueTask>> DequeueAsync(CancellationToken cancellationToken);
 }
 
@@ -21,14 +23,12 @@ public class BackgroundTaskQueue : IBackgroundTaskQueue
         _queue = Channel.CreateBounded<Func<CancellationToken, ValueTask>>(options);
     }
 
-    public async ValueTask QueueBackgroundWorkItemAsync(Func<CancellationToken, ValueTask> workItem)
+    public bool TryEnqueue(Func<CancellationToken, ValueTask> workItem)
     {
-        if (workItem == null)
-        {
-            throw new ArgumentNullException(nameof(workItem));
-        }
+        ArgumentNullException.ThrowIfNull(workItem);
 
-        await _queue.Writer.WriteAsync(workItem);
+        // TryWrite returns false immediately when the bounded channel is full.
+        return _queue.Writer.TryWrite(workItem);
     }
 
     public async ValueTask<Func<CancellationToken, ValueTask>> DequeueAsync(CancellationToken cancellationToken)

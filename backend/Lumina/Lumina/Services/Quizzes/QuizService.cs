@@ -75,6 +75,15 @@ public class QuizService : IQuizService
         return job;
     }
 
+    public async Task MarkJobFailedAsync(Guid jobId)
+    {
+        var job = await _db.QuizJobs.FirstOrDefaultAsync(qj => qj.Id == jobId);
+        if (job is null) return;
+
+        job.Status = JobStatus.Failed;
+        await _db.SaveChangesAsync();
+    }
+
     public async Task ProcessQuizJobAsync(Guid jobId, CancellationToken cancellationToken)
     {
         var job = await _db.QuizJobs
@@ -89,6 +98,11 @@ public class QuizService : IQuizService
 
         using var timerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
+        // Progress lives in a local the timer thread alone owns — never the
+        // EF-tracked 'job' entity — so the timer and the main flow never touch
+        // the DbContext concurrently. job.Progress is set once, on the main
+        // thread, right before SaveChanges.
+        var progress = 0;
         var timerTask = Task.Run(async () =>
         {
             while (!timerCts.Token.IsCancellationRequested)
@@ -96,13 +110,13 @@ public class QuizService : IQuizService
                 await Task.Delay(1500, timerCts.Token).ContinueWith(_ => { });
                 if (timerCts.Token.IsCancellationRequested) break;
 
-                if (job.Progress < 90)
+                if (progress < 90)
                 {
-                    job.Progress = Math.Min(job.Progress + 5, 90);
-                    await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Progress", new
+                    progress = Math.Min(progress + 5, 90);
+                    await _hubContext.Clients.Group(jobId.ToString()).SendAsync("Progress", new
                     {
-                        quizId = job.Id,
-                        progress = job.Progress,
+                        quizId = jobId,
+                        progress,
                         message = "Generating questions..."
                     });
                 }
