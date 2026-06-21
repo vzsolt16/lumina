@@ -163,7 +163,7 @@ public class QuizService : IQuizService
                     AnswerB = q.AnswerB,
                     AnswerC = q.AnswerC,
                     AnswerD = q.AnswerD,
-                    CorrectAnswer = q.CorrectAnswer
+                    CorrectAnswer = NormalizeCorrectAnswer(q.CorrectAnswer)
                 }).ToList()
             };
 
@@ -195,6 +195,20 @@ public class QuizService : IQuizService
                 error = ex.Message
             }, CancellationToken.None);
         }
+    }
+
+    // The schema enum asks the model for "A"-"D", but structured output is
+    // best-effort: normalize casing/whitespace and reject anything else so a
+    // bad letter fails the job instead of silently making every attempt wrong.
+    private static string NormalizeCorrectAnswer(string raw)
+    {
+        var normalized = raw.Trim().ToUpperInvariant();
+        return normalized switch
+        {
+            "A" or "B" or "C" or "D" => normalized,
+            _ => throw new InvalidOperationException(
+                $"AI returned an invalid correctAnswer '{raw}'; expected A, B, C, or D.")
+        };
     }
 
     private async Task<List<GeneratedQuizQuestionDto>> GenerateAllQuestionsAsync(string content, CancellationToken cancellationToken)
