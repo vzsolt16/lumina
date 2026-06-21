@@ -106,12 +106,26 @@ public class FlashcardService : IFlashcardService
             }
         }, timerCts.Token);
 
+        // Stop the progress timer, swallowing any fault from a tick's SendAsync
+        // so a faulted timer can never stop the job from being finalized/notified.
+        async Task StopTimerAsync()
+        {
+            try
+            {
+                await timerCts.CancelAsync();
+                await timerTask;
+            }
+            catch (Exception timerEx)
+            {
+                _logger.LogWarning(timerEx, "Progress timer for flashcard job {JobId} faulted while stopping.", jobId);
+            }
+        }
+
         try
         {
             var flashcards = await GenerateAllFlashcardsAsync(job.Document.Content, cancellationToken);
 
-            await timerCts.CancelAsync();
-            await timerTask;
+            await StopTimerAsync();
 
             var flashcardEntities = flashcards.Select(f => new Flashcard
             {
@@ -138,8 +152,7 @@ public class FlashcardService : IFlashcardService
         }
         catch (Exception ex)
         {
-            await timerCts.CancelAsync();
-            await timerTask;
+            await StopTimerAsync();
             _logger.LogError(ex, "Error processing flashcard job {JobId}", jobId);
             job.Status = JobStatus.Failed;
             await _db.SaveChangesAsync(CancellationToken.None);
