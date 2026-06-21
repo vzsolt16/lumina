@@ -42,6 +42,22 @@ public class OllamaService : IAiService
                 "Failed to deserialize Ollama response.");
         }
 
+        // A non-streaming response should always come back complete. If it
+        // doesn't — or if generation was cut off at the token cap (done_reason
+        // "length") — the JSON is almost certainly truncated, so fail loudly
+        // rather than parse a partial result into a half-empty quiz/flashcard set.
+        if (!result.Done)
+        {
+            throw new InvalidOperationException(
+                "Ollama returned an incomplete response.");
+        }
+
+        if (result.DoneReason == "length")
+        {
+            throw new InvalidOperationException(
+                $"Ollama output was truncated at the token limit ({maxTokens}); increase maxTokens or shorten the input.");
+        }
+
         return result.Response;
     }
 }
