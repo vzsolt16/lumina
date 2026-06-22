@@ -460,18 +460,28 @@
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   border: 1px solid var(--border-t);
+  /* visible so the corner accents can sit flush on the card edge; the inner
+     content scrolls instead (see .flip-content) */
+  overflow: visible;
+}
+
+/* Scrolls long Q/A text without moving the fixed corner accents. */
+.flip-content {
+  position: absolute;
+  inset: 0;
   padding: 18px;
   display: flex;
   flex-direction: column;
   overflow: auto;
 }
 
+/* Opaque card stock so the stacked cards behind don't bleed through the face. */
 .flip-front {
-  background: rgba(255, 255, 255, 0.45);
+  background: #f1f7fa;
 }
 
 .flip-back {
-  background: rgba(62, 168, 200, 0.12);
+  background: #d8ecf3;
   transform: rotateY(180deg);
 }
 
@@ -666,9 +676,129 @@
   border-color: var(--border-t);
 }
 
-/* The single card in a session reads larger than the library grid card. */
-.session-stage .flip-card {
-  height: 280px;
+/* Flashcard session: narrow, centered column so it reads as a single card. */
+/* Narrow, centered column → playing-card (portrait) proportions. */
+.flashcard-session {
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+/* Stacked-deck illusion: up to two offset layers sit behind the active card.
+   The layers-N class trims this near the end of the deck (#4). */
+.flashcard-stack {
+  position: relative;
+  height: 440px;
+}
+
+.flashcard-stack::before,
+.flashcard-stack::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--border-t);
+  /* opaque so only the offset edge peeks out, not the whole card body */
+  background: #e7f0f5;
+}
+
+.flashcard-stack::before {
+  transform: translate(7px, 7px);
+  z-index: 1;
+}
+
+.flashcard-stack::after {
+  transform: translate(14px, 14px);
+  z-index: 0;
+}
+
+/* Second-to-last card keeps one layer; the last card has none. */
+.flashcard-stack.layers-1::after {
+  display: none;
+}
+
+.flashcard-stack.layers-0::before,
+.flashcard-stack.layers-0::after {
+  display: none;
+}
+
+.flashcard-stack .flip-card {
+  position: relative;
+  height: 100%;
+  z-index: 2;
+}
+
+/* Entrance animation so cards slide in on navigation instead of popping. */
+@keyframes card-in-next {
+  from {
+    opacity: 0;
+    transform: translateX(30px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes card-in-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-30px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.flip-card.enter-next {
+  animation: card-in-next 0.3s ease;
+}
+
+.flip-card.enter-prev {
+  animation: card-in-prev 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flip-card.enter-next,
+  .flip-card.enter-prev {
+    animation: none;
+  }
+}
+
+/* Teal L-shaped corner accents (mirrors the landing-page panel crosshairs). */
+.fc-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.fc-corner.tl {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid var(--teal);
+  border-left: 1px solid var(--teal);
+}
+
+.fc-corner.tr {
+  top: -1px;
+  right: -1px;
+  border-top: 1px solid var(--teal);
+  border-right: 1px solid var(--teal);
+}
+
+.fc-corner.bl {
+  bottom: -1px;
+  left: -1px;
+  border-bottom: 1px solid var(--teal);
+  border-left: 1px solid var(--teal);
+}
+
+.fc-corner.br {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 1px solid var(--teal);
+  border-right: 1px solid var(--teal);
 }
 
 .session-nav {
