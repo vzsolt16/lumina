@@ -1,5 +1,6 @@
 using Lumina.Data;
 using Lumina.DTOs;
+using Lumina.DTOs.Document;
 using Lumina.Models;
 using Microsoft.EntityFrameworkCore;
 

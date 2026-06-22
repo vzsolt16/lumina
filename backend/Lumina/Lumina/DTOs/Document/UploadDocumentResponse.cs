@@ -1,4 +1,4 @@
-namespace Lumina.DTOs;
+namespace Lumina.DTOs.Document;
 
 public class UploadDocumentResponse
 {

@@ -1,4 +1,5 @@
 using Lumina.DTOs;
+using Lumina.DTOs.Document;
 using Lumina.Models;
 
 namespace Lumina.Services.Documents;

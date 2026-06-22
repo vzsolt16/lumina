@@ -1,4 +1,5 @@
 using Lumina.DTOs;
+using Lumina.DTOs.Document;
 using Lumina.Extensions;
 using Lumina.Services.Documents;
 using Microsoft.AspNetCore.Authorization;

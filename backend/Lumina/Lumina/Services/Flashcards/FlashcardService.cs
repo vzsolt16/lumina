@@ -95,7 +95,7 @@ public class FlashcardService : IFlashcardService
 
         using var timerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        // Progress lives in a local the timer thread alone owns — never the
+        // Progress lives in a local variable the timer thread alone owns — never the
         // EF-tracked 'job' entity — so the timer and the main flow never touch
         // the DbContext concurrently. job.Progress is set once, on the main
         // thread, right before SaveChanges.
