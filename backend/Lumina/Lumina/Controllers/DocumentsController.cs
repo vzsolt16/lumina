@@ -74,4 +74,17 @@ public class DocumentsController : ControllerBase
 
         return Ok(document);
     }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var deleted = await _documentService.DeleteAsync(id, User.GetUserId());
+
+        if (!deleted)
+        {
+            return NotFound();
+        }
+
+        return NoContent();
+    }
 }

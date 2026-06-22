@@ -45,6 +45,24 @@ public class DocumentService : IDocumentService
             .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
     }
 
+    public async Task<bool> DeleteAsync(Guid id, Guid userId)
+    {
+        var document = await _db.Documents
+            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+
+        if (document is null)
+        {
+            return false;
+        }
+
+        // Flashcards, quizzes, chat messages and jobs cascade-delete with the document.
+        _db.Documents.Remove(document);
+
+        await _db.SaveChangesAsync();
+
+        return true;
+    }
+
     public async Task<List<DocumentSummaryResponse>> GetAllAsync(Guid userId)
     {
         return await _db.Documents

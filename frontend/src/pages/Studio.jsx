@@ -1,16 +1,120 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import Nav from '../components/Nav.jsx'
 import Footer from '../components/Footer.jsx'
 import FileUpload from '../components/FileUpload.jsx'
-import { FileIcon } from '../components/icons.jsx'
-import { getDocuments, uploadDocument } from '../api/client.js'
+import { FileIcon, MoreIcon, TrashIcon } from '../components/icons.jsx'
+import { getDocuments, uploadDocument, deleteDocument } from '../api/client.js'
 import './Studio.css'
 
 function formatDate(value) {
   if (!value) return ''
   const d = new Date(value)
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString()
+}
+
+// A library card with an overflow menu. The menu button lives as a sibling of
+// the card <Link> (an interactive button can't be nested inside an anchor).
+function DocCard({ doc, onDeleted }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+  const wrapRef = useRef(null)
+
+  // Close the menu on any outside click while it's open.
+  useEffect(() => {
+    if (!menuOpen) return
+    function onDocClick(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setMenuOpen(false)
+        setConfirming(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [menuOpen])
+
+  async function handleDelete() {
+    setDeleting(true)
+    setError('')
+    try {
+      await deleteDocument(doc.id)
+      onDeleted(doc.id)
+    } catch (err) {
+      setError(err?.message || 'Delete failed.')
+      setDeleting(false)
+      setConfirming(false)
+    }
+  }
+
+  return (
+    <div className="doc-card-wrap" ref={wrapRef}>
+      <Link to={`/studio/${doc.id}`} className="doc-card">
+        <span className="doc-card-icon">
+          <FileIcon size={20} />
+        </span>
+        <div className="doc-card-body">
+          <div className="doc-file">{doc.fileName}</div>
+          <div className="doc-id">UPLOADED: {formatDate(doc.uploadedAt)}</div>
+        </div>
+      </Link>
+
+      <button
+        type="button"
+        className="doc-menu-btn"
+        aria-label="Document options"
+        aria-haspopup="true"
+        aria-expanded={menuOpen}
+        onClick={() => {
+          setMenuOpen((v) => !v)
+          setConfirming(false)
+          setError('')
+        }}
+      >
+        <MoreIcon size={18} />
+      </button>
+
+      {menuOpen && (
+        <div className="doc-menu" role="menu">
+          {confirming ? (
+            <div className="doc-menu-confirm">
+              <span className="doc-menu-confirm-q">// DELETE_DOCUMENT?</span>
+              <div className="doc-menu-confirm-actions">
+                <button
+                  type="button"
+                  className="doc-menu-item"
+                  onClick={() => setConfirming(false)}
+                  disabled={deleting}
+                >
+                  CANCEL
+                </button>
+                <button
+                  type="button"
+                  className="doc-menu-item danger"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? 'DELETING…' : 'CONFIRM'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="doc-menu-item danger"
+              role="menuitem"
+              onClick={() => setConfirming(true)}
+            >
+              <TrashIcon size={15} />
+              <span>Delete</span>
+            </button>
+          )}
+          {error && <div className="error-line">// ERROR: {error}</div>}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function Studio() {
@@ -97,15 +201,13 @@ export default function Studio() {
             ) : (
               <div className="doc-grid">
                 {docs.map((d) => (
-                  <Link key={d.id} to={`/studio/${d.id}`} className="doc-card">
-                    <span className="doc-card-icon">
-                      <FileIcon size={20} />
-                    </span>
-                    <div className="doc-card-body">
-                      <div className="doc-file">{d.fileName}</div>
-                      <div className="doc-id">UPLOADED: {formatDate(d.uploadedAt)}</div>
-                    </div>
-                  </Link>
+                  <DocCard
+                    key={d.id}
+                    doc={d}
+                    onDeleted={(id) =>
+                      setDocs((prev) => prev.filter((x) => x.id !== id))
+                    }
+                  />
                 ))}
               </div>
             )}

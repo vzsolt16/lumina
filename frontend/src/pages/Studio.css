@@ -186,6 +186,107 @@
   min-width: 0;
 }
 
+/* ── DOCUMENT CARD MENU ───────────────────────────── */
+.doc-card-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+/* Reserve room on the card so long filenames don't run under the menu button. */
+.doc-card-wrap .doc-card {
+  padding-right: 44px;
+}
+
+.doc-menu-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-light);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.doc-menu-btn:hover,
+.doc-menu-btn[aria-expanded='true'] {
+  color: var(--teal);
+  border-color: var(--border-t);
+  background: rgba(62, 168, 200, 0.1);
+}
+
+.doc-menu {
+  position: absolute;
+  top: 34px;
+  right: 8px;
+  z-index: 10;
+  min-width: 150px;
+  padding: 6px;
+  background: #eaf5fa;
+  border: 1px solid var(--teal);
+}
+
+.doc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-mid);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.doc-menu-item:hover:not(:disabled) {
+  background: rgba(62, 168, 200, 0.1);
+}
+
+.doc-menu-item.danger {
+  color: #c0556a;
+}
+
+.doc-menu-item.danger:hover:not(:disabled) {
+  background: rgba(192, 85, 106, 0.1);
+}
+
+.doc-menu-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.doc-menu-confirm-q {
+  display: block;
+  padding: 6px 10px 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  color: var(--text-mid);
+}
+
+.doc-menu-confirm-actions {
+  display: flex;
+  gap: 0;
+}
+
+.doc-menu-confirm-actions .doc-menu-item {
+  justify-content: center;
+  border: 1px solid var(--border-t);
+}
+
+.doc-menu-confirm-actions .doc-menu-item + .doc-menu-item {
+  margin-left: -1px;
+}
+
 /* ── DOCUMENT WORKSPACE ───────────────────────────── */
 .doc-ws-head {
   margin-bottom: 24px;

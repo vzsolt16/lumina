@@ -79,6 +79,30 @@ export function UploadIcon(props) {
   )
 }
 
+// More — three stacked dots (overflow / settings menu trigger).
+export function MoreIcon(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1.1" fill="currentColor" stroke="none" />
+    </Svg>
+  )
+}
+
+// Trash — lidded bin with two vertical lines (delete).
+export function TrashIcon(props) {
+  return (
+    <Svg {...props}>
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <path d="M6 6 V20 H18 V6" />
+      <path d="M9 6 V4 H15 V6" />
+      <line x1="10" y1="10" x2="10" y2="16" />
+      <line x1="14" y1="10" x2="14" y2="16" />
+    </Svg>
+  )
+}
+
 // File — document with folded corner and text lines (loaded doc).
 export function FileIcon(props) {
   return (

@@ -11,4 +11,6 @@ public interface IDocumentService
     Task<Document?> GetByIdAsync(Guid id, Guid userId);
 
     Task<List<DocumentSummaryResponse>> GetAllAsync(Guid userId);
+
+    Task<bool> DeleteAsync(Guid id, Guid userId);
 }

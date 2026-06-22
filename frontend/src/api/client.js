@@ -138,6 +138,11 @@ export function getDocument(id) {
   return request(`/api/documents/${id}`)
 }
 
+/** Delete a document (and its flashcards, quizzes and chat) by id. */
+export function deleteDocument(id) {
+  return request(`/api/documents/${id}`, { method: 'DELETE' })
+}
+
 /**
  * Upload a .txt or .md file.
  * @returns {Promise<{ id: string, fileName: string }>}
