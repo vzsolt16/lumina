@@ -609,3 +609,83 @@
 .quiz-feedback.no {
   color: #c0556a;
 }
+
+/* ── STUDY SESSION (one-at-a-time viewer) ─────────── */
+.session-start,
+.session-results {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.session-start-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  color: var(--text-light);
+}
+
+.session-score {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  color: var(--seafoam);
+}
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.session-counter {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  color: var(--teal);
+}
+
+.session-exit {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  color: var(--text-light);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.session-exit:hover {
+  color: var(--teal);
+  border-color: var(--border-t);
+}
+
+/* The single card in a session reads larger than the library grid card. */
+.session-stage .flip-card {
+  height: 280px;
+}
+
+.session-nav {
+  display: flex;
+  gap: 0;
+  margin-top: 20px;
+}
+
+.session-nav .btn {
+  flex: 1;
+}
+
+.session-nav .btn + .btn {
+  margin-left: -1px;
+}
+
+.session-results .session-nav {
+  width: 100%;
+  max-width: 320px;
+}
