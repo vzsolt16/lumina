@@ -85,14 +85,31 @@ public class ChatService : IChatService
         var askedAt = DateTime.UtcNow;
         var answer = new StringBuilder();
         var completed = false;
+        var seenContent = false;
 
         try
         {
+            // Headroom for the model's chain of thought plus the answer, so a
+            // normal turn isn't cut off mid-stream (qwen3 reasons before replying).
             await foreach (var token in _aiService
-                .GenerateStreamAsync(prompt, cancellationToken: cancellationToken))
+                .GenerateStreamAsync(prompt, maxTokens: 4000, cancellationToken: cancellationToken))
             {
-                answer.Append(token);
-                yield return token;
+                var chunk = token;
+
+                // Skip the leading whitespace the model emits after its (stripped)
+                // think block, so the answer doesn't start with blank lines.
+                if (!seenContent)
+                {
+                    chunk = chunk.TrimStart();
+                    if (chunk.Length == 0)
+                    {
+                        continue;
+                    }
+                    seenContent = true;
+                }
+
+                answer.Append(chunk);
+                yield return chunk;
             }
 
             completed = true;
@@ -143,9 +160,19 @@ public class ChatService : IChatService
         var sb = new StringBuilder();
 
         sb.AppendLine(
-            "You are Lumina, a study assistant. Answer the user's question using only the " +
-            "information in the document below. If the answer cannot be found in the document, " +
-            "say so plainly rather than guessing.");
+            "You are Lumina, a friendly AI study assistant. The user has opened a document and " +
+            "is chatting with you about it.");
+        sb.AppendLine(
+            "- Greetings, small talk, or questions about you (e.g. \"who are you?\"): reply " +
+            "briefly and warmly. You are Lumina, an assistant that helps people understand their " +
+            "documents.");
+        sb.AppendLine(
+            "- Questions about the document's subject: answer from the document below.");
+        sb.AppendLine(
+            "- If the document doesn't cover something, you may still answer from your own " +
+            "general knowledge to stay helpful — just don't make up claims about what this " +
+            "specific document says.");
+        sb.AppendLine("Keep answers concise and reply directly.");
         sb.AppendLine();
         sb.AppendLine($"--- DOCUMENT: {fileName} ---");
         sb.AppendLine(content);
