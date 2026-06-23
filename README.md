@@ -22,7 +22,7 @@ Generate interactive quizzes from study materials.
 
 ### Flashcards
 
-![Flashcards](assets/flashcards.gif)
+![Flashcards](assets/flashcard.gif)
 
 Review AI-generated flashcards for active recall learning.
 
