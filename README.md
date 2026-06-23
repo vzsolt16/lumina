@@ -6,7 +6,7 @@ Lumina is an AI-powered study companion that helps users learn from their own do
 
 ### AI Chat
 
-![AI Chat](assets/chat.mp4)
+![AI Chat](assets/chat.gif)
 
 Chat with uploaded documents using a locally hosted LLM with real-time streaming.
 
