@@ -3,6 +3,7 @@ using Lumina.Data;
 using Lumina.Models;
 using Lumina.Services.AI;
 using Lumina.Services.Auth;
+using Lumina.Services.Chat;
 using Lumina.Services.Documents;
 using Lumina.Services.Flashcards;
 using Lumina.Services.Quizzes;
@@ -120,6 +121,7 @@ builder.Services.AddHostedService<QuizBackgroundWorker>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IFlashcardService, FlashcardService>();
+builder.Services.AddScoped<IChatService, ChatService>();
 
 builder.Services.AddHttpClient<IAiService, OllamaService>(client =>
 {
@@ -144,6 +146,7 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<QuizHub>("/ws/quiz");
 app.MapHub<FlashcardHub>("/ws/flashcard");
+app.MapHub<ChatHub>("/ws/chat");
 
 app.Run();
 

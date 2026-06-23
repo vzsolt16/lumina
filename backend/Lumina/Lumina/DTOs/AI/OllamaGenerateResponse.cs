@@ -4,8 +4,10 @@ namespace Lumina.DTOs.AI;
 
 public class OllamaGenerateResponse
 {
+    [JsonPropertyName("response")]
     public string Response { get; set; } = string.Empty;
 
+    [JsonPropertyName("done")]
     public bool Done { get; set; }
 
     // Why generation stopped: "stop" (natural end), "length" (hit the token

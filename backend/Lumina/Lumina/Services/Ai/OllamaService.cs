@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Lumina.DTOs.AI;
 
@@ -59,5 +61,76 @@ public class OllamaService : IAiService
         }
 
         return result.Response;
+    }
+
+    public async IAsyncEnumerable<string> GenerateStreamAsync(
+        string prompt,
+        int maxTokens = 2000,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var request = new OllamaGenerateRequest
+        {
+            Model = "qwen3:4b",
+            Prompt = prompt,
+            Stream = true,
+            Think = false,
+            Options = new OllamaOptions
+            {
+                NumPredict = maxTokens
+            }
+        };
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/generate")
+        {
+            Content = JsonContent.Create(request)
+        };
+
+        // ResponseHeadersRead lets us start reading the body before the whole
+        // response is buffered — essential for streaming token-by-token.
+        using var response = await _httpClient.SendAsync(
+            httpRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(stream);
+
+        // Ollama streams newline-delimited JSON: one object per line, each carrying
+        // a token fragment in `response`, until a final line with done = true.
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            OllamaGenerateResponse? chunk;
+            try
+            {
+                chunk = JsonSerializer.Deserialize<OllamaGenerateResponse>(line);
+            }
+            catch (JsonException)
+            {
+                // A single malformed/partial line shouldn't abort the whole stream.
+                continue;
+            }
+
+            if (chunk is null)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(chunk.Response))
+            {
+                yield return chunk.Response;
+            }
+
+            if (chunk.Done)
+            {
+                yield break;
+            }
+        }
     }
 }
