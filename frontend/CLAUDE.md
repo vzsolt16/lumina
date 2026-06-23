@@ -40,7 +40,9 @@ The Studio is built around the **document** as the central object; flashcards, q
 - `/studio/:docId` → `StudioDocument.jsx`: the **workspace layout** (header + tab bar, renders the active tab into an `<Outlet/>`). Index redirects to `flashcards`.
 - Nested tabs in `src/pages/document/`: `flashcards`, `quiz`, `chat`.
 
-Flashcards and quiz tabs share `GenerationTab.jsx`: on mount it fetches any **persisted** result and only offers Generate if empty. A live (streamed) result and a persisted result share the same shape, so one render path handles both — `FlashcardDeck` expects `[{question, answer}]`; `QuizView` expects a single `{title, questions:[...]}`. The chat tab is a placeholder (the backend `ChatController` is currently a stub).
+Flashcards and quiz tabs share `GenerationTab.jsx`: on mount it fetches any **persisted** result and only offers Generate if empty. A live (streamed) result and a persisted result share the same shape, so one render path handles both — `FlashcardDeck` expects `[{question, answer}]`; `QuizView` expects a single `{title, questions:[...]}`.
+
+The **chat tab** (`ChatTab.jsx`) does **not** share `GenerationTab` and does **not** use `JobsContext` — chat is a direct request/response stream, not a background job, so its connection and message state are owned by the tab and torn down on unmount. On mount it loads history (`getChatHistory`) and opens a `/ws/chat` connection; sending a message calls `connection.stream('StreamAnswer', docId, question)` and appends tokens to the in-progress assistant message as they arrive. See the SignalR section below.
 
 ### Generation jobs — app-level registry
 This is the least obvious part of the codebase. Flashcard/quiz generation is async and streamed over SignalR, and jobs **must survive route changes**, so they do not live in component hooks.
@@ -54,11 +56,15 @@ This is the least obvious part of the codebase. Flashcard/quiz generation is asy
 #### SignalR flow per job
 Each kind maps to a hub: flashcards → `/ws/flashcard` (`JoinFlashcardGroup`), quiz → `/ws/quiz` (`JoinQuizGroup`). The lifecycle is: build connection (WebSockets only, `skipNegotiation: true`, access token via `accessTokenFactory`) → `connection.start()` → POST `/api/documents/:id/{flashcards|quizzes}` to kick off the background job → `invoke(joinMethod, jobId)` to join the job's group → receive `Progress` / `Completed` / `Failed` events. The token is appended as the `access_token` query param because that's the only way to auth a browser WebSocket handshake.
 
+#### SignalR for chat (different — not in JobsContext)
+Chat uses the same connection setup (`HubConnectionBuilder`, WebSockets-only, `accessTokenFactory`) but a different call style: instead of `invoke` + `.on(event)`, it uses **`connection.stream('StreamAnswer', docId, question)`**, which returns an observable of string tokens — `.subscribe({ next, complete, error })`. There's no group to join and no background job. The connection lives for the tab's lifetime (built on mount, stopped on unmount; unmounting disposes the active subscription, which cancels the server stream). Because qwen3 reasons before answering and that reasoning is stripped server-side, expect a pause after sending before tokens start streaming.
+
 ### Backend data contracts the frontend relies on
 - `GET /api/documents` → `[{ id, fileName, uploadedAt }]`; `GET /api/documents/:id` → document detail.
 - `GET /api/documents/:id/flashcards` → `[{ question, answer }]` (flat list — see caveats).
 - `GET /api/documents/:id/quizzes` → array of `{ title, questions: [{ question, answerA..D, correctAnswer }] }`.
 - Generation: `POST` the same flashcards/quizzes paths; backend queues a background worker and streams progress over the matching hub.
+- `GET /api/documents/:id/chat` → `[{ id, role: 'user' | 'assistant', content, createdAt }]`, oldest-first (history only). Live answers stream over the `/ws/chat` hub's `StreamAnswer`; the user message + reply are persisted server-side only when a stream completes.
 
 ## Caveats / known rough edges
 - **Quiz "latest"**: quiz entities carry no timestamp, so `QuizTab` shows the *last* quiz in the returned array as "most recent". Add a `CreatedAt` on the backend for reliable ordering.

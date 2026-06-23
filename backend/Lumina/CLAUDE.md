@@ -42,6 +42,8 @@ short. The non-secret `Jwt` settings (issuer, audience, token lifetimes) stay in
 
 The AI layer calls a local Ollama instance at `http://localhost:11434`. It must be running before starting the app. The model used is `qwen3:4b`. The HTTP client timeout is 5 minutes to accommodate slow local inference.
 
+`qwen3` is a **reasoning model**: it emits a `<think>…</think>` chain of thought before its answer, and neither the API `think: false` flag nor the `/no_think` prompt switch is honored by this build (the latter just gets echoed as text — don't reintroduce it). The non-streaming path strips the think block via `AiJsonParser`; the streaming path strips it in `OllamaService.GenerateStreamAsync` (see the chat flow below).
+
 ## Authentication & authorization
 
 All endpoints and SignalR hubs require a valid JWT (`[Authorize]`); only `/api/auth/*` is anonymous.
@@ -50,7 +52,7 @@ All endpoints and SignalR hubs require a valid JWT (`[Authorize]`); only `/api/a
 - **Access token:** `TokenService` issues a short-lived JWT (default 15 min) carrying the user id as the `sub` claim. The frontend holds it in memory only (never in storage).
 - **Refresh tokens:** rotating and DB-backed (`RefreshToken` table; only a SHA-256 hash of the token is stored). `POST /api/auth/refresh` revokes the presented token and issues a new one — reusing a revoked or expired token returns 401. Delivered as an HttpOnly cookie scoped to `/api/auth` (default lifetime 7 days). Endpoints: `register`, `login`, `refresh`, `logout`.
 - **Ownership:** every `Document` has a `UserId`; quizzes, flashcards and chat messages inherit ownership through their parent `Document`. Controllers read the caller with `User.GetUserId()` (extension in `Extensions/ClaimsPrincipalExtensions.cs`, which reads `ClaimTypes.NameIdentifier` — JwtBearer maps the `sub` claim to it) and pass that id into the service layer, which scopes every query. Cross-user access returns 404, never another user's data.
-- **SignalR auth:** hubs are `[Authorize]`'d. Browsers can't set the `Authorization` header on a WebSocket handshake, so the client supplies the token via `accessTokenFactory`; the `OnMessageReceived` event in `Program.cs` reads `?access_token=` from the query string, but **only for `/ws` paths**. `JoinQuizGroup` / `JoinFlashcardGroup` additionally verify the job belongs to one of the caller's own documents before joining the group.
+- **SignalR auth:** hubs are `[Authorize]`'d. Browsers can't set the `Authorization` header on a WebSocket handshake, so the client supplies the token via `accessTokenFactory`; the `OnMessageReceived` event in `Program.cs` reads `?access_token=` from the query string, but **only for `/ws` paths**. `JoinQuizGroup` / `JoinFlashcardGroup` additionally verify the job belongs to one of the caller's own documents before joining the group. `ChatHub.StreamAnswer` verifies document ownership before streaming.
 
 ## Architecture
 
@@ -68,7 +70,16 @@ Lumina is a study-assistant API. Users upload documents (`.txt` / `.md`), which 
 
 **Quiz question shape:** each `QuizQuestion` has `AnswerA`–`AnswerD` (the four options) and `CorrectAnswer` (the letter `"A"`, `"B"`, `"C"`, or `"D"`). The Ollama structured-output schema enforces this with a JSON Schema `enum`.
 
-**AI service:** `OllamaService` implements `IAiService` and has a hardcoded `QuizSchema` (`JsonElement`) passed as Ollama's `format` parameter for structured output. If the quiz question shape changes, update both `QuizSchema` and `GeneratedQuizQuestionDto`.
+**AI service:** `OllamaService` implements `IAiService` and has a hardcoded `QuizSchema` (`JsonElement`) passed as Ollama's `format` parameter for structured output. If the quiz question shape changes, update both `QuizSchema` and `GeneratedQuizQuestionDto`. `IAiService` exposes two methods: `GenerateAsync` (one-shot, used by quiz/flashcards) and `GenerateStreamAsync` (token stream, used by chat).
+
+**Chat ("chat with your document") — a different shape from quiz/flashcards.** Chat is a direct request/response stream, **not** a background job, so it does not use `IBackgroundTaskQueue` or the group/replay hub pattern.
+
+1. The client opens `/ws/chat` (`ChatHub`) and calls `StreamAnswer(documentId, question)`, a native SignalR streaming method returning `IAsyncEnumerable<string>`. SignalR injects the `CancellationToken` and trips it on client unsubscribe/disconnect.
+2. `ChatHub` validates document ownership, then delegates to `ChatService.StreamAnswerAsync`, which loads the document + prior `ChatMessage` history, builds the prompt (full `Document.Content` + history + question), and streams tokens from `OllamaService.GenerateStreamAsync`.
+3. **History persistence:** the user message and assistant reply are saved together **only on clean completion** (tracked by a `completed` flag in a `try`/`finally`). On an error or mid-stream disconnect, nothing is persisted — so history never contains a truncated reply that would poison later prompts. The conversation is one thread **per document** (`ChatMessage` links only to `Document`). `GET /api/documents/{id}/chat` (`ChatController`) returns that history.
+4. **Scoping:** like the background workers, `ChatService` does **not** hold the request-scoped `DbContext` across the (potentially minutes-long) stream. It injects `IServiceScopeFactory` and opens a fresh short-lived scope per DB operation (initial load; final save).
+5. **Think-block stripping:** `GenerateStreamAsync` buffers the response until it sees `</think>`, discards everything up to it (the opening `<think>` is part of qwen3's template and never appears in the response — only the close does), then streams the answer. If `</think>` never arrives and `done_reason == "length"`, the model ran out of room mid-thought; it throws rather than dump raw reasoning as the answer. The chat token cap is raised to 4000 to leave room for reasoning + answer.
+6. **Prompt:** lives in `ChatService.BuildPrompt`. Document content is injected wholesale ("start simple"; this is the single method to change when adding RAG). It handles greetings/identity questions and permits general knowledge when the document doesn't cover something, while forbidding fabricated claims about the document itself.
 
 **Database:** SQLite (`lumina.db` in the project folder). EF Core with `OnDelete: Cascade` on all document-owned collections, plus `Document → User` and `RefreshToken → User`. Also holds the ASP.NET Core Identity tables and `RefreshTokens`. Migrations live in `Lumina/Migrations/`.
 
