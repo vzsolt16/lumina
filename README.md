@@ -14,7 +14,7 @@ Chat with uploaded documents using a locally hosted LLM with real-time streaming
 
 ### Quiz Generation
 
-![Quiz Generation](assets/Lumina-Quiz.gif)
+![Quiz Generation](assets/quiz.gif)
 
 Generate interactive quizzes from study materials.
 
@@ -22,7 +22,7 @@ Generate interactive quizzes from study materials.
 
 ### Flashcards
 
-![Flashcards](assets/Lumina-Flashcard.gif)
+![Flashcards](assets/flashcards.gif)
 
 Review AI-generated flashcards for active recall learning.
 
