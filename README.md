@@ -6,7 +6,7 @@ Lumina is an AI-powered study companion that helps users learn from their own do
 
 ### AI Chat
 
-![AI Chat](assets/Lumina-Chat.gif)
+![AI Chat](assets/chat.mp4)
 
 Chat with uploaded documents using a locally hosted LLM with real-time streaming.
 
@@ -22,7 +22,7 @@ Generate interactive quizzes from study materials.
 
 ### Flashcards
 
-![Flashcards](assets/Lumina-Flashcards.gif)
+![Flashcards](assets/Lumina-Flashcard.gif)
 
 Review AI-generated flashcards for active recall learning.
 
