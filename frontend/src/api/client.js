@@ -178,3 +178,12 @@ export function getFlashcards(documentId) {
 export function getQuizzes(documentId) {
   return request(`/api/documents/${documentId}/quizzes`)
 }
+
+/**
+ * Fetch the persisted chat history for a document, oldest-first.
+ * Live answers stream over the /ws/chat hub, not this endpoint.
+ * @returns {Promise<Array<{ id, role: 'user' | 'assistant', content, createdAt }>>}
+ */
+export function getChatHistory(documentId) {
+  return request(`/api/documents/${documentId}/chat`)
+}

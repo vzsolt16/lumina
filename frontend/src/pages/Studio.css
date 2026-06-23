@@ -819,3 +819,113 @@
   width: 100%;
   max-width: 320px;
 }
+
+/* ── CHAT ─────────────────────────────────────────── */
+.chat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Fixed-height scrolling transcript so the composer stays put as it fills. */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  height: 460px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.chat-msg {
+  border-left: 1px solid var(--border-t);
+  padding-left: 14px;
+}
+
+.chat-msg.user {
+  border-left-color: var(--teal);
+}
+
+.chat-msg.assistant {
+  border-left-color: var(--seafoam);
+}
+
+.chat-msg-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  margin-bottom: 8px;
+}
+
+.chat-msg.user .chat-msg-label {
+  color: var(--teal);
+}
+
+.chat-msg.assistant .chat-msg-label {
+  color: var(--seafoam);
+}
+
+.chat-msg-text {
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-dark);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Blinking block caret trailing the answer while it streams. */
+.chat-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--seafoam);
+  animation: pulse 1s steps(2, start) infinite;
+}
+
+.chat-form {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+}
+
+.chat-input {
+  flex: 1;
+  resize: none;
+  padding: 12px 14px;
+  border: 1px solid var(--border-t);
+  background: rgba(255, 255, 255, 0.3);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  color: var(--text-dark);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.chat-input::placeholder {
+  color: var(--text-light);
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--teal);
+  background: rgba(62, 168, 200, 0.06);
+}
+
+.chat-input:disabled {
+  opacity: 0.5;
+}
+
+.chat-form .btn {
+  margin-left: -1px;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-caret {
+    animation: none;
+  }
+}
