@@ -2,6 +2,30 @@
 
 Lumina is an AI-powered study companion that helps users learn from their own documents.
 
+## Preview
+
+### AI Chat
+
+![AI Chat](assets/Lumina-Chat.gif)
+
+Chat with uploaded documents using a locally hosted LLM with real-time streaming.
+
+---
+
+### Quiz Generation
+
+![Quiz Generation](assets/Lumina-Quiz.gif)
+
+Generate interactive quizzes from study materials.
+
+---
+
+### Flashcards
+
+![Flashcards](assets/Lumina-Flashcards.gif)
+
+Review AI-generated flashcards for active recall learning.
+
 Features:
 - Upload TXT, MD and PDF files
 - AI-generated flashcards

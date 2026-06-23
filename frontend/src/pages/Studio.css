@@ -838,16 +838,20 @@
 }
 
 .chat-msg {
-  border-left: 1px solid var(--border-t);
-  padding-left: 14px;
+  max-width: 80%;
+  padding: 12px 14px;
 }
 
 .chat-msg.user {
-  border-left-color: var(--teal);
+  align-self: flex-end;
+  border-right: 1px solid var(--teal);
+  background: rgba(62, 168, 200, 0.07);
 }
 
 .chat-msg.assistant {
-  border-left-color: var(--seafoam);
+  align-self: flex-start;
+  border-left: 1px solid var(--seafoam);
+  background: rgba(90, 202, 174, 0.07);
 }
 
 .chat-msg-label {
@@ -859,6 +863,7 @@
 
 .chat-msg.user .chat-msg-label {
   color: var(--teal);
+  text-align: right;
 }
 
 .chat-msg.assistant .chat-msg-label {
