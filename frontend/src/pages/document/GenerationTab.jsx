@@ -28,16 +28,21 @@ export default function GenerationTab({
   // switches and keeps streaming progress in the background.
   const job = useOutletContext()[kind]
   const [existing, setExisting] = useState(undefined) // undefined = loading
+  const [fetchError, setFetchError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     setExisting(undefined)
+    setFetchError(null)
     fetchExisting(docId)
       .then((res) => {
         if (!cancelled) setExisting(res ?? null)
       })
-      .catch(() => {
-        if (!cancelled) setExisting(null)
+      .catch((err) => {
+        if (!cancelled) {
+          setExisting(null)
+          setFetchError(err?.message || 'Could not load existing results.')
+        }
       })
     return () => {
       cancelled = true
@@ -98,6 +103,10 @@ export default function GenerationTab({
 
           {job.status === 'failed' && (
             <div className="error-line">// ERROR: {job.error}</div>
+          )}
+
+          {fetchError && !running && job.status !== 'failed' && (
+            <div className="error-line">// ERROR: {fetchError}</div>
           )}
 
           {!loading && !running && job.status !== 'failed' && (

@@ -22,17 +22,20 @@ public class AuthController : ControllerBase
     private readonly ITokenService _tokenService;
     private readonly LuminaDbContext _db;
     private readonly JwtOptions _jwtOptions;
+    private readonly IWebHostEnvironment _environment;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
         ITokenService tokenService,
         LuminaDbContext db,
-        IOptions<JwtOptions> jwtOptions)
+        IOptions<JwtOptions> jwtOptions,
+        IWebHostEnvironment environment)
     {
         _userManager = userManager;
         _tokenService = tokenService;
         _db = db;
         _jwtOptions = jwtOptions.Value;
+        _environment = environment;
     }
 
     [HttpPost("register")]
@@ -148,7 +151,10 @@ public class AuthController : ControllerBase
         Response.Cookies.Append(RefreshCookieName, rawRefreshToken, new CookieOptions
         {
             HttpOnly = true,
-            Secure = Request.IsHttps,
+            // Always Secure outside development. Request.IsHttps would be false
+            // behind a TLS-terminating proxy, dropping the flag and exposing the
+            // cookie over plain HTTP between proxy and Kestrel.
+            Secure = !_environment.IsDevelopment(),
             SameSite = SameSiteMode.Lax,
             Path = RefreshCookiePath,
             Expires = refreshEntity.ExpiresAt,

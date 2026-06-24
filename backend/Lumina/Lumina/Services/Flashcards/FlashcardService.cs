@@ -149,6 +149,12 @@ public class FlashcardService : IFlashcardService
                 Answer = f.Answer
             }).ToList();
 
+            // Regeneration replaces the deck: drop the previous set first so
+            // flashcards don't accumulate across runs.
+            await _db.Flashcards
+                .Where(f => f.DocumentId == job.DocumentId)
+                .ExecuteDeleteAsync(cancellationToken);
+
             _db.Flashcards.AddRange(flashcardEntities);
 
             job.Status = JobStatus.Completed;
@@ -174,7 +180,7 @@ public class FlashcardService : IFlashcardService
             await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Failed", new
             {
                 status = "failed",
-                error = ex.Message
+                error = "Flashcard generation failed. Please try again."
             }, CancellationToken.None);
         }
     }

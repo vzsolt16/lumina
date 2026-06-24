@@ -18,7 +18,9 @@ public class BackgroundTaskQueue : IBackgroundTaskQueue
     {
         var options = new BoundedChannelOptions(capacity)
         {
-            FullMode = BoundedChannelFullMode.Wait
+            // TryWrite is used (not WriteAsync), so it returns false immediately
+            // when full regardless of this mode. DropWrite makes that explicit.
+            FullMode = BoundedChannelFullMode.DropWrite
         };
         _queue = Channel.CreateBounded<Func<CancellationToken, ValueTask>>(options);
     }

@@ -39,10 +39,19 @@ public class DocumentService : IDocumentService
         return document;
     }
 
-    public async Task<Document?> GetByIdAsync(Guid id, Guid userId)
+    public async Task<DocumentDetailResponse?> GetByIdAsync(Guid id, Guid userId)
     {
         return await _db.Documents
-            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+            .Where(d => d.Id == id && d.UserId == userId)
+            .Select(d => new DocumentDetailResponse
+            {
+                Id = d.Id,
+                FileName = d.FileName,
+                FileSize = d.FileSize,
+                UploadedAt = d.UploadedAt,
+                Content = d.Content
+            })
+            .FirstOrDefaultAsync();
     }
 
     public async Task<bool> DeleteAsync(Guid id, Guid userId)

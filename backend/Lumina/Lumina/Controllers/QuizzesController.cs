@@ -46,7 +46,7 @@ public class QuizzesController : ControllerBase
                     new { error = "The server is busy. Please try again shortly." });
             }
 
-            return Ok(new { quizId = job.Id, status = job.Status });
+            return Accepted(new { quizId = job.Id, status = job.Status });
         }
         catch (KeyNotFoundException)
         {

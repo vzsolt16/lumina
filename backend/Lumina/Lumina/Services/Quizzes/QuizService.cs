@@ -167,8 +167,14 @@ public class QuizService : IQuizService
                 }).ToList()
             };
 
+            // Regeneration replaces the quiz: drop previous ones first so
+            // quizzes don't accumulate across runs.
+            await _db.Quizzes
+                .Where(q => q.DocumentId == job.DocumentId)
+                .ExecuteDeleteAsync(cancellationToken);
+
             _db.Quizzes.Add(quiz);
-            
+
             job.Status = JobStatus.Completed;
             job.Progress = 100;
             job.ResultJson = JsonSerializer.Serialize(finalQuizDto);
@@ -192,7 +198,7 @@ public class QuizService : IQuizService
             await _hubContext.Clients.Group(job.Id.ToString()).SendAsync("Failed", new
             {
                 status = "failed",
-                error = ex.Message
+                error = "Quiz generation failed. Please try again."
             }, CancellationToken.None);
         }
     }
@@ -238,6 +244,7 @@ public class QuizService : IQuizService
 
         return await _db.Quizzes
             .Where(q => q.DocumentId == documentId)
+            .OrderByDescending(q => q.CreatedAt)
             .Select(ToResponse)
             .ToListAsync();
     }

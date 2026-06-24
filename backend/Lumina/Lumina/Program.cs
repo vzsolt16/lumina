@@ -123,10 +123,14 @@ builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IFlashcardService, FlashcardService>();
 builder.Services.AddScoped<IChatService, ChatService>();
 
+var ollamaUrl = builder.Configuration["Ollama:BaseUrl"]
+    ?? throw new InvalidOperationException("Ollama:BaseUrl is not configured.");
+
 builder.Services.AddHttpClient<IAiService, OllamaService>(client =>
 {
-    client.BaseAddress = new Uri("http://localhost:11434");
-    client.Timeout = TimeSpan.FromMinutes(5);
+    client.BaseAddress = new Uri(ollamaUrl);
+    client.Timeout = TimeSpan.FromMinutes(
+        builder.Configuration.GetValue<int>("Ollama:TimeoutMinutes", 5));
 });
 
 var app = builder.Build();

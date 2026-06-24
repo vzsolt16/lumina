@@ -47,7 +47,7 @@ public class FlashcardsController : ControllerBase
                     new { error = "The server is busy. Please try again shortly." });
             }
 
-            return Ok(new { flashcardJobId = job.Id, status = job.Status });
+            return Accepted(new { flashcardJobId = job.Id, status = job.Status });
         }
         catch (KeyNotFoundException)
         {

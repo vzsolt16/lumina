@@ -8,7 +8,7 @@ public interface IDocumentService
 {
     Task<Document> UploadAsync(IFormFile file, Guid userId);
 
-    Task<Document?> GetByIdAsync(Guid id, Guid userId);
+    Task<DocumentDetailResponse?> GetByIdAsync(Guid id, Guid userId);
 
     Task<List<DocumentSummaryResponse>> GetAllAsync(Guid userId);
 
