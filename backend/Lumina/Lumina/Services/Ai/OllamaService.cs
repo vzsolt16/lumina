@@ -1,25 +1,28 @@
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.Json;
 using Lumina.DTOs.AI;
+using Microsoft.Extensions.Configuration;
 
 namespace Lumina.Services.AI;
 
 public class OllamaService : IAiService
 {
     private readonly HttpClient _httpClient;
+    private readonly string _model;
 
-    public OllamaService(HttpClient httpClient)
+    public OllamaService(HttpClient httpClient, IConfiguration configuration)
     {
         _httpClient = httpClient;
+        _model = configuration["Ollama:Model"]
+            ?? throw new InvalidOperationException("Ollama:Model is not configured.");
     }
 
     public async Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000)
     {
         var request = new OllamaGenerateRequest
         {
-            Model = "qwen3:4b",
+            Model = _model,
             Prompt = prompt,
             Stream = false,
             Think = false,
@@ -71,7 +74,7 @@ public class OllamaService : IAiService
     {
         var request = new OllamaGenerateRequest
         {
-            Model = "qwen3:4b",
+            Model = _model,
             Prompt = prompt,
             Stream = true,
             Think = false,
@@ -98,17 +101,6 @@ public class OllamaService : IAiService
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
 
-        // qwen3 is a reasoning model: it emits its chain of thought before the
-        // answer, terminated by a </think> tag. The opening <think> is part of the
-        // chat template, so it usually never appears in the response — only the
-        // closing tag does. So we buffer the response until </think>, discard
-        // everything up to and including it, then stream the answer normally. If
-        // </think> never arrives, the response carried no thinking and we flush
-        // the buffer as-is.
-        var buffer = new StringBuilder();
-        var passedThink = false;
-        string? doneReason = null;
-
         // Ollama streams newline-delimited JSON: one object per line, each carrying
         // a token fragment in `response`, until a final line with done = true.
         while (await reader.ReadLineAsync(cancellationToken) is { } line)
@@ -125,7 +117,6 @@ public class OllamaService : IAiService
             }
             catch (JsonException)
             {
-                // A single malformed/partial line shouldn't abort the whole stream.
                 continue;
             }
 
@@ -136,61 +127,13 @@ public class OllamaService : IAiService
 
             if (!string.IsNullOrEmpty(chunk.Response))
             {
-                if (passedThink)
-                {
-                    yield return chunk.Response;
-                }
-                else
-                {
-                    buffer.Append(chunk.Response);
-
-                    // Searching the whole buffer each time reassembles a </think>
-                    // split across chunk boundaries; the buffer is only as large
-                    // as the (short-lived) thinking section.
-                    var buffered = buffer.ToString();
-                    var close = buffered.IndexOf(ThinkClose, StringComparison.Ordinal);
-                    if (close >= 0)
-                    {
-                        var after = buffered[(close + ThinkClose.Length)..].TrimStart();
-                        buffer.Clear();
-                        passedThink = true;
-                        if (after.Length > 0)
-                        {
-                            yield return after;
-                        }
-                    }
-                }
+                yield return chunk.Response;
             }
 
             if (chunk.Done)
             {
-                doneReason = chunk.DoneReason;
                 break;
             }
         }
-
-        // We never saw </think>. Because this model always opens a thinking section,
-        // that means generation stopped while still inside it — almost always
-        // because it hit the token cap. Surface that rather than dumping the raw
-        // reasoning as if it were the answer (which is what a naive flush would do).
-        if (!passedThink)
-        {
-            if (doneReason == "length")
-            {
-                throw new InvalidOperationException(
-                    "The model ran out of room while reasoning and didn't reach an answer. " +
-                    "Try asking a more specific question.");
-            }
-
-            // Natural stop with no thinking section at all (e.g. thinking genuinely
-            // disabled): treat the buffer as the answer.
-            if (buffer.Length > 0)
-            {
-                yield return buffer.ToString().Trim();
-            }
-        }
     }
-
-    private const string ThinkOpen = "<think>";
-    private const string ThinkClose = "</think>";
 }
