@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Git
+
+Commit messages must follow conventional commits: `<type>: <short description>`.
+Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `test`.
+Example: `feat: add document deletion functionality`
+
 ## Commands
 
 All commands should be run from the solution root (`/backend/Lumina`), targeting the project at `Lumina/Lumina.csproj`.
@@ -40,9 +46,9 @@ short. The non-secret `Jwt` settings (issuer, audience, token lifetimes) stay in
 
 ## External dependency: Ollama
 
-The AI layer calls a local Ollama instance at `http://localhost:11434`. It must be running before starting the app. The model used is `qwen3:4b`. The HTTP client timeout is 5 minutes to accommodate slow local inference.
+The AI layer calls a local Ollama instance at `http://localhost:11434`. It must be running before starting the app. The model is configured in `appsettings.json` under `Ollama:Model` (currently `qwen3:4b-instruct`). The HTTP client timeout is 5 minutes to accommodate slow local inference.
 
-`qwen3` is a **reasoning model**: it emits a `<think>…</think>` chain of thought before its answer, and neither the API `think: false` flag nor the `/no_think` prompt switch is honored by this build (the latter just gets echoed as text — don't reintroduce it). The non-streaming path strips the think block via `AiJsonParser`; the streaming path strips it in `OllamaService.GenerateStreamAsync` (see the chat flow below).
+`qwen3:4b-instruct` honours the `think: false` API flag, so both `GenerateAsync` and `GenerateStreamAsync` pass it and receive clean responses with no `<think>` blocks. `AiJsonParser` still contains a think-block stripping regex as a safety net, but it is a no-op in practice.
 
 ## Authentication & authorization
 
@@ -78,7 +84,7 @@ Lumina is a study-assistant API. Users upload documents (`.txt` / `.md`), which 
 2. `ChatHub` validates document ownership, then delegates to `ChatService.StreamAnswerAsync`, which loads the document + prior `ChatMessage` history, builds the prompt (full `Document.Content` + history + question), and streams tokens from `OllamaService.GenerateStreamAsync`.
 3. **History persistence:** the user message and assistant reply are saved together **only on clean completion** (tracked by a `completed` flag in a `try`/`finally`). On an error or mid-stream disconnect, nothing is persisted — so history never contains a truncated reply that would poison later prompts. The conversation is one thread **per document** (`ChatMessage` links only to `Document`). `GET /api/documents/{id}/chat` (`ChatController`) returns that history.
 4. **Scoping:** like the background workers, `ChatService` does **not** hold the request-scoped `DbContext` across the (potentially minutes-long) stream. It injects `IServiceScopeFactory` and opens a fresh short-lived scope per DB operation (initial load; final save).
-5. **Think-block stripping:** `GenerateStreamAsync` buffers the response until it sees `</think>`, discards everything up to it (the opening `<think>` is part of qwen3's template and never appears in the response — only the close does), then streams the answer. If `</think>` never arrives and `done_reason == "length"`, the model ran out of room mid-thought; it throws rather than dump raw reasoning as the answer. The chat token cap is raised to 4000 to leave room for reasoning + answer.
+5. **Token streaming:** `GenerateStreamAsync` passes `think: false` to Ollama (honoured by `qwen3:4b-instruct`), so tokens are streamed directly with no think-block buffering or stripping.
 6. **Prompt:** lives in `ChatService.BuildPrompt`. Document content is injected wholesale ("start simple"; this is the single method to change when adding RAG). It handles greetings/identity questions and permits general knowledge when the document doesn't cover something, while forbidding fabricated claims about the document itself.
 
 **Database:** SQLite (`lumina.db` in the project folder). EF Core with `OnDelete: Cascade` on all document-owned collections, plus `Document → User` and `RefreshToken → User`. Also holds the ASP.NET Core Identity tables and `RefreshTokens`. Migrations live in `Lumina/Migrations/`.
