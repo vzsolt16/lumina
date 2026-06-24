@@ -4,9 +4,9 @@ public class ChatMessage
 {
     public Guid Id { get; set; }
 
-    public Guid DocumentId { get; set; }
+    public Guid ConversationId { get; set; }
 
-    public Document Document { get; set; } = null!;
+    public ChatConversation Conversation { get; set; } = null!;
 
     public string Role { get; set; } = string.Empty;
 

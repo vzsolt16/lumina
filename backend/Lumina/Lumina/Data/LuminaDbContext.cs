@@ -22,6 +22,8 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
 
     public DbSet<QuizQuestion> QuizQuestions => Set<QuizQuestion>();
 
+    public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
+
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
     public DbSet<QuizJob> QuizJobs => Set<QuizJob>();
@@ -84,9 +86,15 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
             .HasConversion<string>();
 
         modelBuilder.Entity<Document>()
-            .HasMany(d => d.ChatMessages)
+            .HasMany(d => d.Conversations)
             .WithOne(c => c.Document)
             .HasForeignKey(c => c.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasMany(c => c.Messages)
+            .WithOne(m => m.Conversation)
+            .HasForeignKey(m => m.ConversationId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<Quiz>()
@@ -101,7 +109,10 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
         modelBuilder.Entity<Quiz>()
             .HasIndex(q => q.DocumentId);
 
-        modelBuilder.Entity<ChatMessage>()
+        modelBuilder.Entity<ChatConversation>()
             .HasIndex(c => c.DocumentId);
+
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(m => m.ConversationId);
     }
 }

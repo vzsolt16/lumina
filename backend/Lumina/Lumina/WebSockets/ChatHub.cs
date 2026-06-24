@@ -24,7 +24,7 @@ public class ChatHub : Hub
     // and receives the answer token-by-token. SignalR supplies the
     // CancellationToken and cancels it if the client unsubscribes or disconnects.
     public async IAsyncEnumerable<string> StreamAnswer(
-        Guid documentId,
+        Guid conversationId,
         string question,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -44,16 +44,16 @@ public class ChatHub : Hub
 
         // Validate ownership before streaming so we can return a clean HubException
         // (the service re-checks too, but throws KeyNotFoundException internally).
-        var owns = await _db.Documents
-            .AnyAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken);
+        var owns = await _db.ChatConversations
+            .AnyAsync(c => c.Id == conversationId && c.Document.UserId == userId, cancellationToken);
 
         if (!owns)
         {
-            throw new HubException("Document not found.");
+            throw new HubException("Conversation not found.");
         }
 
         await foreach (var token in _chatService
-            .StreamAnswerAsync(documentId, userId, question, cancellationToken))
+            .StreamAnswerAsync(conversationId, userId, question, cancellationToken))
         {
             yield return token;
         }

@@ -24,5 +24,5 @@ public class Document
 
     public ICollection<Quiz> Quizzes { get; set; } = [];
 
-    public ICollection<ChatMessage> ChatMessages { get; set; } = [];
+    public ICollection<ChatConversation> Conversations { get; set; } = [];
 }

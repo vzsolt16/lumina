@@ -23,7 +23,7 @@ public class ChatService : IChatService
         _aiService = aiService;
     }
 
-    public async Task<List<ChatMessageResponse>> GetHistoryAsync(Guid documentId, Guid userId)
+    public async Task<List<ChatConversationResponse>> GetConversationsAsync(Guid documentId, Guid userId)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
@@ -36,8 +36,69 @@ public class ChatService : IChatService
             throw new KeyNotFoundException("Document not found.");
         }
 
+        return await db.ChatConversations
+            .Where(c => c.DocumentId == documentId)
+            .OrderByDescending(c => c.UpdatedAt)
+            .Select(c => new ChatConversationResponse
+            {
+                Id = c.Id,
+                Title = c.Title,
+                CreatedAt = c.CreatedAt,
+                UpdatedAt = c.UpdatedAt
+            })
+            .ToListAsync();
+    }
+
+    public async Task<ChatConversationResponse> CreateConversationAsync(Guid documentId, Guid userId)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+
+        var owns = await db.Documents
+            .AnyAsync(d => d.Id == documentId && d.UserId == userId);
+
+        if (!owns)
+        {
+            throw new KeyNotFoundException("Document not found.");
+        }
+
+        var now = DateTime.UtcNow;
+        var conversation = new ChatConversation
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = documentId,
+            Title = "New chat",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        db.ChatConversations.Add(conversation);
+        await db.SaveChangesAsync();
+
+        return new ChatConversationResponse
+        {
+            Id = conversation.Id,
+            Title = conversation.Title,
+            CreatedAt = conversation.CreatedAt,
+            UpdatedAt = conversation.UpdatedAt
+        };
+    }
+
+    public async Task<List<ChatMessageResponse>> GetMessagesAsync(Guid conversationId, Guid userId)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+
+        var owns = await db.ChatConversations
+            .AnyAsync(c => c.Id == conversationId && c.Document.UserId == userId);
+
+        if (!owns)
+        {
+            throw new KeyNotFoundException("Conversation not found.");
+        }
+
         return await db.ChatMessages
-            .Where(m => m.DocumentId == documentId)
+            .Where(m => m.ConversationId == conversationId)
             .OrderBy(m => m.CreatedAt)
             .Select(m => new ChatMessageResponse
             {
@@ -49,35 +110,59 @@ public class ChatService : IChatService
             .ToListAsync();
     }
 
+    public async Task DeleteConversationAsync(Guid conversationId, Guid userId)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+
+        var conversation = await db.ChatConversations
+            .FirstOrDefaultAsync(c => c.Id == conversationId && c.Document.UserId == userId);
+
+        if (conversation is null)
+        {
+            throw new KeyNotFoundException("Conversation not found.");
+        }
+
+        // Messages are removed by the cascade configured on ChatConversation → Messages.
+        db.ChatConversations.Remove(conversation);
+        await db.SaveChangesAsync();
+    }
+
     public async IAsyncEnumerable<string> StreamAnswerAsync(
-        Guid documentId,
+        Guid conversationId,
         Guid userId,
         string question,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         string fileName;
         string content;
+        bool isFirstMessage;
         List<ChatMessage> history;
 
         using (var scope = _scopeFactory.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
 
-            var document = await db.Documents
-                .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken);
+            var conversation = await db.ChatConversations
+                .Include(c => c.Document)
+                .FirstOrDefaultAsync(
+                    c => c.Id == conversationId && c.Document.UserId == userId,
+                    cancellationToken);
 
-            if (document is null)
+            if (conversation is null)
             {
-                throw new KeyNotFoundException("Document not found.");
+                throw new KeyNotFoundException("Conversation not found.");
             }
 
-            fileName = document.FileName;
-            content = document.Content;
+            fileName = conversation.Document.FileName;
+            content = conversation.Document.Content;
 
             history = await db.ChatMessages
-                .Where(m => m.DocumentId == documentId)
+                .Where(m => m.ConversationId == conversationId)
                 .OrderBy(m => m.CreatedAt)
                 .ToListAsync(cancellationToken);
+
+            isFirstMessage = history.Count == 0;
         }
 
         var prompt = BuildPrompt(fileName, content, history, question);
@@ -125,10 +210,12 @@ public class ChatService : IChatService
                 using var scope = _scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
 
+                var completedAt = DateTime.UtcNow;
+
                 db.ChatMessages.Add(new ChatMessage
                 {
                     Id = Guid.NewGuid(),
-                    DocumentId = documentId,
+                    ConversationId = conversationId,
                     Role = "user",
                     Content = question,
                     CreatedAt = askedAt
@@ -136,17 +223,48 @@ public class ChatService : IChatService
                 db.ChatMessages.Add(new ChatMessage
                 {
                     Id = Guid.NewGuid(),
-                    DocumentId = documentId,
+                    ConversationId = conversationId,
                     Role = "assistant",
                     Content = answer.ToString(),
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = completedAt
                 });
+
+                // Bump the conversation so it sorts to the top, and name it from
+                // the opening question the first time round.
+                var conversation = await db.ChatConversations
+                    .FirstOrDefaultAsync(c => c.Id == conversationId, CancellationToken.None);
+                if (conversation is not null)
+                {
+                    conversation.UpdatedAt = completedAt;
+                    if (isFirstMessage)
+                    {
+                        conversation.Title = DeriveTitle(question);
+                    }
+                }
 
                 // The request token may already be cancelled here; persisting the
                 // completed answer shouldn't be abandoned because of that.
                 await db.SaveChangesAsync(CancellationToken.None);
             }
         }
+    }
+
+    // The list shows a short label per conversation; take the first line of the
+    // opening question, trimmed to a sane length.
+    private static string DeriveTitle(string question)
+    {
+        var firstLine = question
+            .Replace("\r", " ")
+            .Replace("\n", " ")
+            .Trim();
+
+        const int maxLength = 40;
+        if (firstLine.Length <= maxLength)
+        {
+            return firstLine.Length == 0 ? "New chat" : firstLine;
+        }
+
+        return firstLine[..maxLength].TrimEnd() + "…";
     }
 
     // The document is injected wholesale for now ("start simple"). When RAG lands,
