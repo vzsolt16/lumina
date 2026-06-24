@@ -929,6 +929,195 @@
   white-space: nowrap;
 }
 
+/* ── CHAT — CONVERSATION SIDEBAR ──────────────────── */
+.chat-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.chat-layout .chat-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-t);
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(62, 168, 200, 0.1);
+  border-bottom: 1px solid var(--border-t);
+}
+
+.chat-sidebar-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+
+.chat-new-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  color: var(--teal);
+  background: transparent;
+  border: 1px solid var(--border-t);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.chat-new-btn:hover:not(:disabled) {
+  background: rgba(62, 168, 200, 0.12);
+  border-color: var(--teal);
+}
+
+.chat-new-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.chat-convo-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.chat-convo {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border-t);
+}
+
+.chat-convo.active {
+  background: rgba(90, 202, 174, 0.1);
+  border-left: 2px solid var(--seafoam);
+}
+
+.chat-convo-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.chat-convo-main:hover:not(:disabled) {
+  background: rgba(62, 168, 200, 0.07);
+}
+
+.chat-convo-main:disabled {
+  cursor: default;
+}
+
+.chat-convo-title {
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.82rem;
+  color: var(--text-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-convo-time {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.06em;
+  color: var(--text-light);
+}
+
+.chat-convo-del {
+  flex-shrink: 0;
+  padding: 0 10px;
+  color: var(--text-light);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.chat-convo-del:hover:not(:disabled) {
+  color: #c0556a;
+  background: rgba(192, 85, 106, 0.1);
+}
+
+.chat-convo-del:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chat-convo-confirm {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.chat-convo-confirm-btn {
+  padding: 0 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.06em;
+  color: var(--text-mid);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border-t);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.chat-convo-confirm-btn:hover:not(:disabled) {
+  background: rgba(62, 168, 200, 0.1);
+}
+
+.chat-convo-confirm-btn.danger {
+  color: #c0556a;
+}
+
+.chat-convo-confirm-btn.danger:hover:not(:disabled) {
+  background: rgba(192, 85, 106, 0.12);
+}
+
+.chat-convo-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 760px) {
+  .chat-layout {
+    flex-direction: column;
+  }
+
+  .chat-sidebar {
+    width: 100%;
+  }
+
+  .chat-convo-list {
+    max-height: 200px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-caret {
     animation: none;

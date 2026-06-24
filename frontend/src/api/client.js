@@ -179,11 +179,41 @@ export function getQuizzes(documentId) {
   return request(`/api/documents/${documentId}/quizzes`)
 }
 
+/* ─── Chat conversations ───────────────────────────────────────────── */
+
 /**
- * Fetch the persisted chat history for a document, oldest-first.
+ * List a document's chat conversations, most-recently-updated first.
+ * @returns {Promise<Array<{ id, title, createdAt, updatedAt }>>}
+ */
+export function getConversations(documentId) {
+  return request(`/api/documents/${documentId}/chat/conversations`)
+}
+
+/**
+ * Start a new, empty conversation for a document.
+ * @returns {Promise<{ id, title, createdAt, updatedAt }>}
+ */
+export function createConversation(documentId) {
+  return request(`/api/documents/${documentId}/chat/conversations`, {
+    method: 'POST',
+  })
+}
+
+/**
+ * Fetch one conversation's messages, oldest-first.
  * Live answers stream over the /ws/chat hub, not this endpoint.
  * @returns {Promise<Array<{ id, role: 'user' | 'assistant', content, createdAt }>>}
  */
-export function getChatHistory(documentId) {
-  return request(`/api/documents/${documentId}/chat`)
+export function getConversationMessages(documentId, conversationId) {
+  return request(
+    `/api/documents/${documentId}/chat/conversations/${conversationId}/messages`,
+  )
+}
+
+/** Delete a conversation (and its messages) by id. */
+export function deleteConversation(documentId, conversationId) {
+  return request(
+    `/api/documents/${documentId}/chat/conversations/${conversationId}`,
+    { method: 'DELETE' },
+  )
 }
