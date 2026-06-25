@@ -291,6 +291,17 @@ public class ChatService : IChatService
             "general knowledge to stay helpful — just don't make up claims about what this " +
             "specific document says.");
         sb.AppendLine("Keep answers concise and reply directly.");
+        sb.AppendLine(
+            "Format your replies in Markdown so they're easy to read: use **bold** for key " +
+            "terms, bullet or numbered lists for steps and enumerations, `inline code` and " +
+            "fenced code blocks for code or commands, tables for structured comparisons, and " +
+            "short headings to break up longer answers. Don't overformat short or conversational " +
+            "replies — a plain sentence is fine for greetings and small talk.");
+        sb.AppendLine(
+            "Use pure Markdown only — never write raw HTML tags (no <ul>, <li>, <br>, etc.); " +
+            "they will not render. Markdown table cells cannot contain bullet lists, so for any " +
+            "data with per-row lists, use a normal bullet list with bold labels instead of a " +
+            "table, or keep each cell to short comma-separated text.");
         sb.AppendLine();
         sb.AppendLine($"--- DOCUMENT: {fileName} ---");
         sb.AppendLine(content);

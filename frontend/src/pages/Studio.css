@@ -875,8 +875,100 @@
   font-size: 0.9rem;
   line-height: 1.6;
   color: var(--text-dark);
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Markdown rendering inside a message: collapse the outer margins so a single
+   paragraph sits flush, but keep spacing between stacked blocks. */
+.chat-msg-text > :first-child {
+  margin-top: 0;
+}
+
+.chat-msg-text > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-msg-text p {
+  margin: 0 0 0.6em;
+}
+
+.chat-msg-text ul,
+.chat-msg-text ol {
+  margin: 0 0 0.6em;
+  padding-left: 1.4em;
+}
+
+.chat-msg-text li {
+  margin: 0.15em 0;
+}
+
+.chat-msg-text h1,
+.chat-msg-text h2,
+.chat-msg-text h3,
+.chat-msg-text h4 {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0.8em 0 0.4em;
+}
+
+.chat-msg-text h1 { font-size: 1.15rem; }
+.chat-msg-text h2 { font-size: 1.08rem; }
+.chat-msg-text h3 { font-size: 1rem; }
+.chat-msg-text h4 { font-size: 0.92rem; }
+
+.chat-msg-text a {
+  color: var(--teal);
+  text-decoration: underline;
+}
+
+.chat-msg-text code {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.82em;
+  padding: 0.12em 0.35em;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+}
+
+.chat-msg-text pre {
+  margin: 0 0 0.6em;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.06);
+  border-left: 2px solid var(--seafoam);
+}
+
+.chat-msg-text pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.chat-msg-text blockquote {
+  margin: 0 0 0.6em;
+  padding-left: 0.9em;
+  border-left: 2px solid var(--border-t);
+  color: var(--text-muted, inherit);
+}
+
+.chat-msg-text table {
+  border-collapse: collapse;
+  margin: 0 0 0.6em;
+  display: block;
+  overflow-x: auto;
+}
+
+.chat-msg-text th,
+.chat-msg-text td {
+  border: 1px solid var(--border-t);
+  padding: 5px 9px;
+  text-align: left;
+}
+
+.chat-msg-text th {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 600;
 }
 
 /* Blinking block caret trailing the answer while it streams. */

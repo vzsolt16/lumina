@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { HubConnectionBuilder, HttpTransportType } from '@microsoft/signalr'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   getConversations,
   createConversation,
@@ -392,7 +394,9 @@ export default function ChatTab() {
                   >
                     <div className="chat-msg-label">{isUser ? '// YOU' : '// LUMINA'}</div>
                     <div className="chat-msg-text">
-                      {m.content}
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {m.content}
+                      </ReactMarkdown>
                       {!isUser && isLast && streaming && <span className="chat-caret" />}
                     </div>
                   </div>
