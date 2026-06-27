@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Nav from '../components/Nav.jsx'
 import Footer from '../components/Footer.jsx'
@@ -58,25 +59,55 @@ export default function Landing() {
   const navigate = useNavigate()
   const tickerItems = [...TICKER_ITEMS, ...TICKER_ITEMS]
 
+  // Scroll-reveal motion. The hidden/animated states live behind
+  // [data-motion="ready"] + a prefers-reduced-motion guard in CSS, so without
+  // JS (or with reduced motion) every section renders visible at rest — the
+  // reveal only ever *enhances* an already-painted default.
+  useEffect(() => {
+    const root = document.documentElement
+    const targets = document.querySelectorAll('.reveal, .reveal-soft, .stagger')
+    if (!targets.length) return
+
+    root.setAttribute('data-motion', 'ready')
+
+    const io = new IntersectionObserver(
+      (entries, obs) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in-view')
+            obs.unobserve(entry.target)
+          }
+        }
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -8% 0px' },
+    )
+
+    targets.forEach((el) => io.observe(el))
+    return () => {
+      io.disconnect()
+      root.removeAttribute('data-motion')
+    }
+  }, [])
+
   return (
     <>
       <Nav />
 
       {/* HERO */}
       <section className="hero">
-        <div className="hero-bg-layer">
+        <div className="hero-bg-layer" aria-hidden="true">
           <div className="panel-a"><Crosshairs /></div>
           <div className="panel-b"><Crosshairs /></div>
           <div className="panel-c"><Crosshairs full={false} /></div>
         </div>
 
-        <div className="hero-content">
+        <div className="hero-content stagger">
           <div className="hero-pre">AI-powered study companion · v2.0</div>
-          <div className="hero-h1">
+          <h1 className="hero-h1">
             LEARN<br />
             <span className="outline">DEEPER</span><br />
             RETAIN MORE
-          </div>
+          </h1>
           <div className="hero-sub">Contemporary Study Systems</div>
           <p className="hero-desc">
             Lumina transforms your notes into active study tools — flashcards,
@@ -91,27 +122,27 @@ export default function Landing() {
           </div>
         </div>
 
-        <div className="hero-card info-card">
+        <div className="hero-card info-card reveal-soft" aria-hidden="true">
           <div className="card-label">Active learners</div>
           <div className="card-value">12,400</div>
           <div className="card-desc">students studying with Lumina this month</div>
           <div className="card-bar"><div className="card-bar-fill" /></div>
         </div>
 
-        <div className="hero-card stat-card">
+        <div className="hero-card stat-card reveal-soft" aria-hidden="true">
           <div className="card-label">Avg. retention gain</div>
           <div className="card-value">3×</div>
           <div className="card-desc">improvement vs. passive reading</div>
           <div className="card-bar"><div className="card-bar-fill" style={{ width: '88%' }} /></div>
         </div>
 
-        <div className="hero-tag t1">SYS·LUMINA·2.0</div>
-        <div className="hero-tag t2">READY</div>
-        <div className="hero-tag t3">0xFF·STUDY·OK</div>
+        <div className="hero-tag t1" aria-hidden="true">SYS·LUMINA·2.0</div>
+        <div className="hero-tag t2" aria-hidden="true">READY</div>
+        <div className="hero-tag t3" aria-hidden="true">0xFF·STUDY·OK</div>
       </section>
 
       {/* TICKER */}
-      <div className="ticker">
+      <div className="ticker" aria-hidden="true">
         <div className="ticker-label">Lumina · Systems</div>
         <div className="ticker-track">
           {tickerItems.map((item, i) => (
@@ -126,10 +157,12 @@ export default function Landing() {
       {/* FEATURES */}
       <section id="features" className="features-section">
         <div className="section">
-          <div className="section-tag">Core modules</div>
-          <div className="section-heading">Study tools.<br />Built for focus.</div>
-          <div className="section-sub">— Four components, one coherent system</div>
-          <div className="features-grid">
+          <div className="reveal">
+            <div className="section-tag">Core modules</div>
+            <h2 className="section-heading">Study tools.<br />Built for focus.</h2>
+            <div className="section-sub">— Four components, one coherent system</div>
+          </div>
+          <div className="features-grid stagger">
             {FEATURES.map((f) => {
               const Icon = f.icon
               return (
@@ -148,13 +181,15 @@ export default function Landing() {
 
       {/* HOW IT WORKS */}
       <section id="how" className="section">
-        <div className="section-tag">Protocol</div>
-        <div className="section-heading">Three-step<br />study sequence</div>
-        <div className="section-sub">— From raw notes to active retention</div>
-        <div className="how-grid">
+        <div className="reveal">
+          <div className="section-tag">Protocol</div>
+          <h2 className="section-heading">Three-step<br />study sequence</h2>
+          <div className="section-sub">— From raw notes to active retention</div>
+        </div>
+        <div className="how-grid stagger">
           {STEPS.map((s) => (
             <div className="how-cell" key={s.num}>
-              <div className="how-num">{s.num}</div>
+              <div className="how-num" aria-hidden="true">{s.num}</div>
               <div className="how-step-label">{s.label}</div>
               <div className="how-title">{s.title}</div>
               <p className="how-desc">{s.desc}</p>
@@ -165,7 +200,7 @@ export default function Landing() {
 
       {/* STATS */}
       <div className="stats-band">
-        <div className="stats-inner">
+        <div className="stats-inner stagger">
           {STATS.map((s) => (
             <div className="stat-cell" key={s.label}>
               <div className="stat-num">{s.num}</div>
@@ -179,9 +214,9 @@ export default function Landing() {
       {/* AI COMPANION */}
       <section id="companion" className="section">
         <div className="ai-grid">
-          <div>
+          <div className="reveal">
             <div className="section-tag">AI Unit · 04</div>
-            <div className="section-heading">The companion<br />that asks back</div>
+            <h2 className="section-heading">The companion<br />that asks back</h2>
             <div className="section-sub">— More than answers. Active dialogue.</div>
             <p className="ai-intro">
               Lumina's Study Corner doesn't just retrieve information — it
@@ -194,7 +229,7 @@ export default function Landing() {
               ))}
             </ul>
           </div>
-          <div>
+          <div className="reveal">
             <div className="ai-window">
               <div className="ai-window-bar">
                 <div className="ai-window-title">LUMINA · Study Corner · Session active</div>
@@ -225,8 +260,8 @@ export default function Landing() {
                 </div>
               </div>
               <div className="ai-input-row">
-                <input className="ai-input" type="text" placeholder="// INPUT QUERY" />
-                <button className="ai-send">SEND →</button>
+                <input className="ai-input" type="text" placeholder="// INPUT QUERY" aria-label="Study Corner demo input" />
+                <button className="ai-send" tabIndex={-1}>SEND →</button>
               </div>
             </div>
           </div>
@@ -236,13 +271,14 @@ export default function Landing() {
       {/* TESTIMONIALS */}
       <section className="testi-section">
         <div className="section">
-          <div className="section-tag">User reports</div>
-          <div className="section-heading">Field notes</div>
-          <div className="section-sub">— From students currently in the system</div>
-          <div className="testi-grid">
+          <div className="reveal">
+            <h2 className="section-heading">Field notes</h2>
+            <div className="section-sub">— From students currently in the system</div>
+          </div>
+          <div className="testi-grid stagger">
             {TESTIMONIALS.map((t) => (
               <div className="testi-cell" key={t.author}>
-                <div className="testi-quote">"</div>
+                <div className="testi-quote" aria-hidden="true">"</div>
                 <p className="testi-text">{t.text}</p>
                 <div className="testi-author">{t.author}</div>
                 <div className="testi-role">{t.role}</div>
@@ -255,20 +291,22 @@ export default function Landing() {
       {/* CTA */}
       <div className="cta-band">
         <div className="cta-inner">
-          <div>
-            <div className="section-tag">Initialize</div>
-            <div className="cta-heading">
+          <div className="reveal">
+            <h2 className="cta-heading">
               Begin your<br />
               <span className="line2">first session</span>
-            </div>
+            </h2>
             <div className="cta-note">FREE_ACCESS · NO_CARD · NO_CONFIG · WORKS_NOW</div>
           </div>
-          <div className="cta-actions">
+          <div className="cta-actions reveal">
             <button className="btn-cta main" onClick={() => navigate('/studio')}>
               Create free account
             </button>
-            <button className="btn-cta alt" onClick={() => navigate('/studio')}>
-              View documentation
+            <button
+              className="btn-cta alt"
+              onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })}
+            >
+              See how it works
             </button>
           </div>
         </div>

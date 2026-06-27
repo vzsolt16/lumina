@@ -113,6 +113,25 @@ export function TrashIcon(props) {
   )
 }
 
+// Check — angular checkmark (correct answer; non-color state cue).
+export function CheckIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12 L10 17 L19 7" />
+    </Svg>
+  )
+}
+
+// Close — crossing strokes (incorrect answer / dismiss; non-color state cue).
+export function CloseIcon(props) {
+  return (
+    <Svg {...props}>
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </Svg>
+  )
+}
+
 // File — document with folded corner and text lines (loaded doc).
 export function FileIcon(props) {
   return (

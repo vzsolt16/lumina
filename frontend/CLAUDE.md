@@ -71,4 +71,6 @@ Chat uses the same connection setup (`HubConnectionBuilder`, WebSockets-only, `a
 - **Flashcards may accumulate**: `GET .../flashcards` returns *all* cards for a document, so regeneration can pile up cards if the backend appends rather than replaces — verify backend behavior before assuming a fresh deck.
 
 ## Design system
+**Design context lives at the project root:** [`../PRODUCT.md`](../PRODUCT.md) (strategic — who/what/why, brand personality, anti-references, accessibility bar) and [`../DESIGN.md`](../DESIGN.md) (visual system — the canonical "Gen X Soft Club" spec: tokens, type, components, do's/don'ts). Read both before reshaping UI; they're the source of truth (the old `original_DESIGN.md` was consolidated into `DESIGN.md`).
+
 UI follows a deliberate aesthetic (see `src/pages/Studio.css` headers and `src/styles/theme.css`): glass panels, hairline teal borders, **sharp corners (no border-radius), no shadows**, monospace system labels (`Share Tech Mono`), condensed display type (`Barlow Condensed`). Match this when adding UI — reuse existing classes (`.panel`, `.doc-*`, `.gen-empty`, `.progress-*`) rather than introducing new visual patterns. Icons are a custom line-art set in `src/components/icons.jsx` (outline-only, `currentColor`, sized via a `size` prop).

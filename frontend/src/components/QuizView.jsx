@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { CheckIcon, CloseIcon } from './icons.jsx'
 
 function optionsOf(q) {
   return [
@@ -20,10 +21,10 @@ function Question({ index, q, selected, onSelect }) {
       <div className="quiz-q-text">{q.question}</div>
       {optionsOf(q).map((opt) => {
         let cls = 'quiz-opt'
-        if (answered) {
-          if (opt.letter === correct) cls += ' correct'
-          else if (opt.letter === selected) cls += ' wrong'
-        }
+        const isCorrect = answered && opt.letter === correct
+        const isWrongPick = answered && opt.letter !== correct && opt.letter === selected
+        if (isCorrect) cls += ' correct'
+        else if (isWrongPick) cls += ' wrong'
         return (
           <button
             key={opt.letter}
@@ -33,6 +34,16 @@ function Question({ index, q, selected, onSelect }) {
           >
             <span className="quiz-opt-letter">{opt.letter}</span>
             <span>{opt.text}</span>
+            {isCorrect && (
+              <span className="quiz-opt-mark">
+                <CheckIcon size={16} />
+              </span>
+            )}
+            {isWrongPick && (
+              <span className="quiz-opt-mark">
+                <CloseIcon size={16} />
+              </span>
+            )}
           </button>
         )
       })}

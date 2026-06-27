@@ -91,7 +91,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--teal);
+  color: var(--teal-text);
   margin-bottom: 20px;
   display: flex;
   align-items: center;
@@ -109,12 +109,13 @@
 .hero-h1 {
   font-family: 'Barlow Condensed', sans-serif;
   font-weight: 700;
-  font-size: clamp(3.5rem, 7vw, 5.5rem);
+  font-size: clamp(2.75rem, 8vw, 5.5rem);
   line-height: 0.95;
   letter-spacing: -0.01em;
   text-transform: uppercase;
   color: var(--text-dark);
   margin-bottom: 8px;
+  text-wrap: balance;
 }
 
 .hero-h1 .outline {
@@ -179,7 +180,7 @@
   font-size: 0.62rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--teal);
+  color: var(--teal-text);
   margin-bottom: 8px;
 }
 
@@ -194,7 +195,7 @@
 
 .card-desc {
   font-size: 0.75rem;
-  color: var(--text-light);
+  color: var(--text-mid);
   line-height: 1.4;
 }
 
@@ -217,7 +218,7 @@
   z-index: 3;
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.62rem;
-  color: rgba(62, 168, 200, 0.7);
+  color: var(--teal-text);
   letter-spacing: 0.1em;
 }
 
@@ -290,30 +291,31 @@
   border-bottom: 1px solid var(--border-t);
 }
 
+/* Hairline dividers via a 1px grid gap over a teal-tinted container — survives
+   any column count, so the responsive collapse needs no border bookkeeping. */
 .features-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 0;
+  gap: 1px;
+  background: var(--border-t);
   border: 1px solid var(--border-t);
 }
 
 .feat-cell {
   padding: 36px 28px;
-  border-right: 1px solid var(--border-t);
+  background: var(--bg);
   position: relative;
   transition: background 0.25s;
 }
 
-.feat-cell:last-child { border-right: none; }
-
 .feat-cell:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .feat-num {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.62rem;
-  color: var(--teal);
+  color: var(--teal-text);
   letter-spacing: 0.14em;
   margin-bottom: 20px;
 }
@@ -344,7 +346,7 @@
   font-size: 0.82rem;
   color: var(--text-mid);
   line-height: 1.65;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 .feat-cell-footer {
@@ -353,7 +355,7 @@
   border-top: 1px solid var(--border-t);
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.6rem;
-  color: rgba(62, 168, 200, 0.5);
+  color: var(--teal-text);
   letter-spacing: 0.1em;
 }
 
@@ -391,7 +393,7 @@
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.62rem;
   letter-spacing: 0.16em;
-  color: var(--teal);
+  color: var(--teal-text);
   margin-bottom: 16px;
   display: flex;
   align-items: center;
@@ -419,7 +421,7 @@
   font-size: 0.84rem;
   color: var(--text-mid);
   line-height: 1.65;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 /* ── AI SECTION ───────────────────────────────────── */
@@ -451,13 +453,13 @@
   font-size: 0.65rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--teal);
+  color: var(--teal-text);
 }
 
 .ai-window-status {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.58rem;
-  color: var(--seafoam);
+  color: var(--seafoam-text);
   display: flex;
   align-items: center;
   gap: 5px;
@@ -505,7 +507,7 @@
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.55rem;
   letter-spacing: 0.16em;
-  color: var(--teal);
+  color: var(--teal-text);
   margin-bottom: 4px;
 }
 
@@ -527,7 +529,7 @@
   letter-spacing: 0.04em;
 }
 
-.ai-input::placeholder { color: rgba(90, 132, 152, 0.5); }
+.ai-input::placeholder { color: var(--text-mid); opacity: 0.75; }
 .ai-input:focus { outline: none; border-color: var(--teal); }
 
 .ai-send {
@@ -554,26 +556,24 @@
 .stats-inner {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 0;
+  gap: 1px;
+  background: var(--border-t);
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 64px;
 }
 
 .stat-cell {
-  padding: 40px 32px;
-  border-right: 1px solid var(--border-t);
+  padding: 40px clamp(20px, 4vw, 32px);
+  background: var(--bg);
   position: relative;
 }
-
-.stat-cell:last-child { border-right: none; }
 
 .stat-num {
   font-family: 'Barlow Condensed', sans-serif;
   font-weight: 700;
-  font-size: 3rem;
+  font-size: clamp(2.25rem, 5vw, 3rem);
   line-height: 1;
-  color: var(--teal);
+  color: var(--teal-text);
   letter-spacing: -0.02em;
   margin-bottom: 6px;
 }
@@ -583,7 +583,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-light);
+  color: var(--text-mid);
 }
 
 .stat-bar {
@@ -637,7 +637,7 @@
   font-size: 0.85rem;
   color: var(--text-mid);
   line-height: 1.7;
-  font-weight: 300;
+  font-weight: 400;
   margin-bottom: 24px;
 }
 
@@ -654,7 +654,7 @@
 .testi-role {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.58rem;
-  color: var(--text-light);
+  color: var(--text-mid);
   letter-spacing: 0.08em;
 }
 
@@ -693,7 +693,7 @@
 .cta-note {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.65rem;
-  color: var(--text-light);
+  color: var(--text-mid);
   letter-spacing: 0.12em;
   margin-top: 12px;
 }
@@ -738,6 +738,11 @@
   color: var(--text-dark);
 }
 
+.btn-cta:focus-visible {
+  outline: 2px solid var(--teal2);
+  outline-offset: 2px;
+}
+
 .ai-bullets {
   list-style: none;
   display: flex;
@@ -764,7 +769,161 @@
   font-size: 0.88rem;
   color: var(--text-mid);
   line-height: 1.7;
-  font-weight: 300;
+  font-weight: 400;
   max-width: 400px;
   margin-bottom: 28px;
+}
+
+/* ── MOTION ───────────────────────────────────────── */
+/* The progress bars fill via scaleX (origin left) so the reveal never touches
+   layout. The fill's width still encodes the data value. */
+.stat-bar-fill,
+.card-bar-fill {
+  transform-origin: left center;
+}
+
+/* Every hidden/animated state is gated behind BOTH the JS-set
+   [data-motion="ready"] flag AND prefers-reduced-motion. Result: with no JS, a
+   stalled tab, or reduced-motion preference, the page renders fully visible at
+   rest — motion only ever enhances an already-painted default. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-motion="ready"] .reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s var(--ease-out-quint), transform 0.6s var(--ease-out-quint);
+  }
+  [data-motion="ready"] .reveal.in-view {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Opacity-only variant for elements that already own a positioning transform
+     (the absolutely-centered hero cards). */
+  [data-motion="ready"] .reveal-soft {
+    opacity: 0;
+    transition: opacity 0.7s var(--ease-out-quint);
+  }
+  [data-motion="ready"] .reveal-soft.in-view {
+    opacity: 1;
+  }
+
+  /* Staggered children: container carries .stagger, direct children cascade in.
+     Capped at 8 so total stagger stays ~0.46s. */
+  [data-motion="ready"] .stagger > * {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.55s var(--ease-out-quint), transform 0.55s var(--ease-out-quint);
+  }
+  [data-motion="ready"] .stagger.in-view > * {
+    opacity: 1;
+    transform: none;
+  }
+  [data-motion="ready"] .stagger.in-view > *:nth-child(1) { transition-delay: 0.04s; }
+  [data-motion="ready"] .stagger.in-view > *:nth-child(2) { transition-delay: 0.10s; }
+  [data-motion="ready"] .stagger.in-view > *:nth-child(3) { transition-delay: 0.16s; }
+  [data-motion="ready"] .stagger.in-view > *:nth-child(4) { transition-delay: 0.22s; }
+  [data-motion="ready"] .stagger.in-view > *:nth-child(5) { transition-delay: 0.28s; }
+  [data-motion="ready"] .stagger.in-view > *:nth-child(6) { transition-delay: 0.34s; }
+  [data-motion="ready"] .stagger.in-view > *:nth-child(7) { transition-delay: 0.40s; }
+  [data-motion="ready"] .stagger.in-view > *:nth-child(8) { transition-delay: 0.46s; }
+
+  /* Bars sit empty until their section scrolls in, then fill — the latent
+     "transition: width" intent the original CSS never fired. */
+  [data-motion="ready"] .stat-bar-fill,
+  [data-motion="ready"] .card-bar-fill {
+    transform: scaleX(0);
+    transition: transform 1s var(--ease-out-quint) 0.15s;
+  }
+  [data-motion="ready"] .in-view .stat-bar-fill,
+  [data-motion="ready"] .in-view .card-bar-fill {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+}
+
+/* ── RESPONSIVE ───────────────────────────────────── */
+/* Tablet & below: the hero's absolute art direction (decorative panels, HUD
+   tags, floating cards over the right rail) can't survive a narrow column.
+   Collapse to one readable column; the metric cards drop into normal flow
+   beneath the headline. */
+@media (max-width: 1024px) {
+  .hero {
+    min-height: auto;
+    flex-direction: column;
+    align-items: stretch;
+    padding-bottom: 32px;
+  }
+  .hero-bg-layer,
+  .hero-tag {
+    display: none;
+  }
+  .hero-content {
+    max-width: 760px;
+    padding: 56px clamp(20px, 5vw, 64px) 28px;
+  }
+  .hero-card {
+    position: static;
+    transform: none;
+    width: auto;
+    max-width: 360px;
+    margin: 0 clamp(20px, 5vw, 64px) 16px;
+  }
+  .ai-grid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+}
+
+@media (max-width: 900px) {
+  .features-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .how-grid,
+  .testi-grid {
+    grid-template-columns: 1fr;
+  }
+  .stats-inner {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .cta-inner {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding: clamp(48px, 8vw, 80px) clamp(20px, 5vw, 64px);
+  }
+  .cta-actions {
+    width: 100%;
+  }
+  .btn-cta {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+  /* The floating metric cards duplicate the stats band; drop them on phones. */
+  .hero-card {
+    display: none;
+  }
+  .hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+  .hero-actions .btn {
+    width: 100%;
+  }
+  .hero-actions .btn + .btn {
+    margin-left: 0;
+    margin-top: -1px;
+  }
 }

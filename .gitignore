@@ -502,3 +502,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Claude Code / impeccable tooling (local skills, settings, and working state)
+.claude/
+.impeccable/

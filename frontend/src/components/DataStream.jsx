@@ -5,7 +5,7 @@ const STREAM_ITEMS = [
   'RETNT·↑', 'SYS·RDY', '0xAE12',
 ]
 
-// Fixed 48px monospace data-stream sidebar (see DESIGN.md). Repeated for rhythm.
+// Fixed 48px monospace data-stream sidebar (see DESIGN.md, project root). Repeated for rhythm.
 export default function DataStream() {
   const items = [...STREAM_ITEMS, ...STREAM_ITEMS.slice(0, 10)]
   return (

@@ -1,7 +1,7 @@
 /* ============================================================
    Lumina — Design System (Gen X Soft Club)
    Tokens + global chrome shared across landing + studio.
-   Source of truth: DESIGN.md / landing-genx.html. Do not deviate.
+   Source of truth: DESIGN.md (project root) + PRODUCT.md. Do not deviate.
    ============================================================ */
 
 *,
@@ -21,6 +21,14 @@
   --teal2: #2790b0;
   --cyan: #58c8e0;
   --seafoam: #5acaae;
+  /* Text-safe accent variants — AA (≥4.5:1) on the pale glass surfaces.
+     The bright accents above are for fills/borders/dots; use these when the
+     accent must carry *text* (labels, feedback, counts). See DESIGN.md Contrast Floor Rule. */
+  --teal-text: #18708a;
+  --seafoam-text: #1a7259;
+  /* Sole sanctioned warm hue: semantic error/incorrect. -text variant clears AA on glass. */
+  --error: #c0556a;
+  --error-text: #a8344a;
   --text-dark: #0f2a38;
   --text-mid: #2a5468;
   --text-light: #5a8498;
@@ -28,6 +36,10 @@
   --border-t: rgba(62, 168, 200, 0.3);
   --border-w: rgba(255, 255, 255, 0.6);
   --grid: rgba(62, 168, 200, 0.15);
+
+  /* Motion — exponential ease-outs (no bounce, no elastic) */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 html {
@@ -114,7 +126,7 @@ nav {
   position: sticky;
   top: 0;
   z-index: 100;
-  padding: 0 48px;
+  padding: 0 clamp(16px, 4vw, 48px);
   height: 60px;
   display: flex;
   align-items: center;
@@ -180,6 +192,12 @@ nav {
   color: var(--text-dark);
 }
 
+.nav-links a:focus-visible,
+.btn-nav:focus-visible {
+  outline: 2px solid var(--teal2);
+  outline-offset: -2px;
+}
+
 .nav-cta {
   display: flex;
   gap: 0;
@@ -223,14 +241,14 @@ nav {
 .section {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 88px 64px;
+  padding: clamp(56px, 8vw, 88px) clamp(20px, 5vw, 64px);
 }
 
 .section-tag {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.65rem;
   letter-spacing: 0.18em;
-  color: var(--teal);
+  color: var(--teal-text);
   margin-bottom: 10px;
   display: flex;
   align-items: center;
@@ -259,7 +277,7 @@ nav {
   font-family: 'Barlow Condensed', sans-serif;
   font-style: italic;
   font-size: 1rem;
-  color: var(--text-light);
+  color: var(--text-mid);
   margin-bottom: 56px;
   letter-spacing: 0.04em;
 }
@@ -286,6 +304,11 @@ nav {
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--teal2);
+  outline-offset: 2px;
 }
 
 .btn.primary {
@@ -318,10 +341,12 @@ footer {
 .footer-inner {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 28px 64px;
+  padding: 28px clamp(20px, 5vw, 64px);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
 }
 
 .footer-logo {
@@ -336,7 +361,7 @@ footer {
 .footer-system {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.6rem;
-  color: var(--text-light);
+  color: var(--text-mid);
   letter-spacing: 0.12em;
 }
 
@@ -361,7 +386,7 @@ footer {
   font-size: 0.65rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-light);
+  color: var(--text-mid);
   text-decoration: none;
   transition: color 0.2s;
 }
@@ -373,4 +398,45 @@ footer {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+/* ── RESPONSIVE CHROME ────────────────────────────── */
+/* The fixed data-stream sidebar is desktop decoration; reclaim its width on
+   tablet and below so content gets the full viewport. */
+@media (max-width: 860px) {
+  .data-stream {
+    display: none;
+  }
+  .wrapper {
+    margin-left: 0;
+  }
+  /* Section anchor links collapse on mobile; the CTA buttons carry navigation. */
+  .nav-links {
+    display: none;
+  }
+}
+
+/* Phones: trim the nav so the logo + both auth CTAs fit without overflowing
+   (overflow-x is hidden, so any nav overflow silently clips the page edge). */
+@media (max-width: 560px) {
+  .nav-logo {
+    font-size: 1.3rem;
+    gap: 8px;
+  }
+  .nav-logo .logo-mark {
+    display: none;
+  }
+  .btn-nav {
+    padding: 0 12px;
+    letter-spacing: 0.08em;
+  }
+}
+
+/* ── REDUCED MOTION ───────────────────────────────── */
+/* Ambient loops (status pulse, data-stream shimmer) are decorative; stop them. */
+@media (prefers-reduced-motion: reduce) {
+  .status-dot,
+  .data-stream span {
+    animation: none;
+  }
 }

@@ -1,5 +1,5 @@
 /* Studio — upload + generate feature screen. Built on the Lumina design
-   system (DESIGN.md): glass panels, hairline teal borders, sharp corners,
+   system (DESIGN.md, project root): glass panels, hairline teal borders, sharp corners,
    monospace system labels. No radius, no shadows, no warm tones. */
 
 .studio {
@@ -525,7 +525,7 @@
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.62rem;
   letter-spacing: 0.1em;
-  color: var(--seafoam);
+  color: var(--seafoam-text);
   margin-bottom: 20px;
 }
 
@@ -540,7 +540,7 @@
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.58rem;
   letter-spacing: 0.14em;
-  color: var(--teal);
+  color: var(--teal-text);
   margin-bottom: 10px;
 }
 
@@ -581,8 +581,17 @@
 .quiz-opt-letter {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.7rem;
-  color: var(--teal);
+  color: var(--teal-text);
   flex-shrink: 0;
+}
+
+/* Non-color state cue: ✓ on the correct option, ✗ on a wrong pick, pushed to the
+   row's trailing edge. Pairs with the color tint so state never relies on hue alone. */
+.quiz-opt-mark {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
 }
 
 .quiz-opt.correct {
@@ -591,8 +600,9 @@
   color: var(--text-dark);
 }
 
-.quiz-opt.correct .quiz-opt-letter {
-  color: var(--seafoam);
+.quiz-opt.correct .quiz-opt-letter,
+.quiz-opt.correct .quiz-opt-mark {
+  color: var(--seafoam-text);
 }
 
 .quiz-opt.wrong {
@@ -601,8 +611,9 @@
   color: var(--text-dark);
 }
 
-.quiz-opt.wrong .quiz-opt-letter {
-  color: #c0556a;
+.quiz-opt.wrong .quiz-opt-letter,
+.quiz-opt.wrong .quiz-opt-mark {
+  color: var(--error-text);
 }
 
 .quiz-feedback {
@@ -613,11 +624,11 @@
 }
 
 .quiz-feedback.ok {
-  color: var(--seafoam);
+  color: var(--seafoam-text);
 }
 
 .quiz-feedback.no {
-  color: #c0556a;
+  color: var(--error-text);
 }
 
 /* ── STUDY SESSION (one-at-a-time viewer) ─────────── */
@@ -635,14 +646,14 @@
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.66rem;
   letter-spacing: 0.12em;
-  color: var(--text-light);
+  color: var(--text-mid);
 }
 
 .session-score {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.8rem;
   letter-spacing: 0.12em;
-  color: var(--seafoam);
+  color: var(--seafoam-text);
 }
 
 .session-bar {
@@ -656,14 +667,14 @@
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.62rem;
   letter-spacing: 0.14em;
-  color: var(--teal);
+  color: var(--teal-text);
 }
 
 .session-exit {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.58rem;
   letter-spacing: 0.12em;
-  color: var(--text-light);
+  color: var(--text-mid);
   background: transparent;
   border: 1px solid transparent;
   padding: 4px 8px;
