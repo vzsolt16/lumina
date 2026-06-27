@@ -29,7 +29,13 @@ dotnet ef database update --project Lumina/Lumina.csproj
 dotnet ef migrations remove --project Lumina/Lumina.csproj
 ```
 
-There are no automated tests in this project yet.
+Tests live in `Lumina.Tests/` (xUnit). Run them from the solution root:
+
+```bash
+dotnet test Lumina.Tests/Lumina.Tests.csproj
+```
+
+Pure-logic helpers in service classes are tested as `internal static` methods — `InternalsVisibleTo("Lumina.Tests")` is declared in `Lumina/Properties/AssemblyInfo.cs`. When adding a new service with non-trivial pure logic (validation, tree algorithms, parsing), add unit tests for those helpers in `Lumina.Tests/`.
 
 ## Configuration & secrets
 
