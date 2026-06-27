@@ -132,6 +132,25 @@ export function CloseIcon(props) {
   )
 }
 
+// Folder — tabbed folder outline (library grouping).
+export function FolderIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M3 6 H10 L12 8 H21 V19 H3 Z" />
+    </Svg>
+  )
+}
+
+// Pencil — angled pen stroke (rename / edit).
+export function PencilIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4 20 L4 16 L16 4 L20 8 L8 20 Z" />
+      <line x1="14" y1="6" x2="18" y2="10" />
+    </Svg>
+  )
+}
+
 // File — document with folded corner and text lines (loaded doc).
 export function FileIcon(props) {
   return (

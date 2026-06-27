@@ -144,13 +144,71 @@ export function deleteDocument(id) {
 }
 
 /**
- * Upload a .txt or .md file.
+ * Move a document into a folder, or to the root with folderId = null.
+ * @param {string} id
+ * @param {string|null} folderId
+ */
+export function moveDocument(id, folderId) {
+  return request(`/api/documents/${id}/folder`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ folderId }),
+  })
+}
+
+/**
+ * Upload a .txt or .md file, optionally into a folder.
+ * @param {File} file
+ * @param {string|null} [folderId] - target folder, or null/undefined for the root.
  * @returns {Promise<{ id: string, fileName: string }>}
  */
-export function uploadDocument(file) {
+export function uploadDocument(file, folderId = null) {
   const form = new FormData()
   form.append('file', file)
+  if (folderId) form.append('folderId', folderId)
   return request('/api/documents', { method: 'POST', body: form })
+}
+
+/* ─── Folders ──────────────────────────────────────────────────────── */
+
+/**
+ * List all of the current user's folders (flat; the client builds the tree).
+ * @returns {Promise<Array<{ id, name, parentId: string|null, createdAt }>>}
+ */
+export function getFolders() {
+  return request('/api/folders')
+}
+
+/** Create a folder. parentId null = root level. */
+export function createFolder(name, parentId = null) {
+  return request('/api/folders', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ name, parentId }),
+  })
+}
+
+/** Rename a folder (no duplicate names on the same level). */
+export function renameFolder(id, name) {
+  return request(`/api/folders/${id}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ name }),
+  })
+}
+
+/** Move a folder under a new parent, or to the root with parentId = null. */
+export function moveFolder(id, parentId) {
+  return request(`/api/folders/${id}/move`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ parentId }),
+  })
+}
+
+/** Delete a folder and everything inside it (cascade). */
+export function deleteFolder(id) {
+  return request(`/api/folders/${id}`, { method: 'DELETE' })
 }
 
 /**

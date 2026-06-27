@@ -15,8 +15,13 @@ public class DocumentService : IDocumentService
         _db = db;
     }
 
-    public async Task<Document> UploadAsync(IFormFile file, Guid userId)
+    public async Task<Document> UploadAsync(IFormFile file, Guid userId, Guid? folderId)
     {
+        if (folderId is not null && !await OwnsFolderAsync(folderId.Value, userId))
+        {
+            throw new InvalidOperationException("Folder not found.");
+        }
+
         using var reader = new StreamReader(file.OpenReadStream());
 
         var content = await reader.ReadToEndAsync();
@@ -25,6 +30,7 @@ public class DocumentService : IDocumentService
         {
             Id = Guid.NewGuid(),
             UserId = userId,
+            FolderId = folderId,
             FileName = file.FileName,
             Content = content,
             ContentType = file.ContentType,
@@ -81,8 +87,33 @@ public class DocumentService : IDocumentService
             {
                 Id = d.Id,
                 FileName = d.FileName,
+                FolderId = d.FolderId,
                 UploadedAt = d.UploadedAt
             })
             .ToListAsync();
     }
+
+    public async Task<bool> MoveAsync(Guid id, Guid? folderId, Guid userId)
+    {
+        var document = await _db.Documents
+            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+
+        if (document is null)
+        {
+            return false;
+        }
+
+        if (folderId is not null && !await OwnsFolderAsync(folderId.Value, userId))
+        {
+            throw new InvalidOperationException("Folder not found.");
+        }
+
+        document.FolderId = folderId;
+        await _db.SaveChangesAsync();
+
+        return true;
+    }
+
+    private Task<bool> OwnsFolderAsync(Guid folderId, Guid userId) =>
+        _db.Folders.AnyAsync(f => f.Id == folderId && f.UserId == userId);
 }

@@ -16,6 +16,8 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
 
     public DbSet<Document> Documents => Set<Document>();
 
+    public DbSet<Folder> Folders => Set<Folder>();
+
     public DbSet<Flashcard> Flashcards => Set<Flashcard>();
 
     public DbSet<Quiz> Quizzes => Set<Quiz>();
@@ -42,6 +44,31 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
 
         modelBuilder.Entity<Document>()
             .HasIndex(d => d.UserId);
+
+        modelBuilder.Entity<Folder>()
+            .HasOne(f => f.User)
+            .WithMany(u => u.Folders)
+            .HasForeignKey(f => f.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Self-referencing tree. Deleting a folder cascades to its subfolders
+        // (SQLite applies ON DELETE CASCADE recursively).
+        modelBuilder.Entity<Folder>()
+            .HasOne(f => f.Parent)
+            .WithMany()
+            .HasForeignKey(f => f.ParentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Folder>()
+            .HasIndex(f => new { f.UserId, f.ParentId });
+
+        // Deleting a folder cascade-deletes the documents inside it (and, via the
+        // document's own cascades, their flashcards/quizzes/chat/jobs).
+        modelBuilder.Entity<Document>()
+            .HasOne(d => d.Folder)
+            .WithMany()
+            .HasForeignKey(d => d.FolderId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<RefreshToken>()
             .HasOne(rt => rt.User)

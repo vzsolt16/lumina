@@ -10,6 +10,11 @@ public class Document
 
     public ApplicationUser User { get; set; } = null!;
 
+    // Null = the document lives at the library root (not inside any folder).
+    public Guid? FolderId { get; set; }
+
+    public Folder? Folder { get; set; }
+
     public string FileName { get; set; } = string.Empty;
 
     public string Content { get; set; } = string.Empty;

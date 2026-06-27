@@ -8,5 +8,7 @@ public class ApplicationUser : IdentityUser<Guid>
 {
     public ICollection<Document> Documents { get; set; } = [];
 
+    public ICollection<Folder> Folders { get; set; } = [];
+
     public ICollection<RefreshToken> RefreshTokens { get; set; } = [];
 }

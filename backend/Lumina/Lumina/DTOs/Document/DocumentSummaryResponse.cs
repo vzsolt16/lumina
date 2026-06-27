@@ -6,5 +6,7 @@ public class DocumentSummaryResponse
 
     public string FileName { get; set; } = "";
 
+    public Guid? FolderId { get; set; }
+
     public DateTime UploadedAt { get; set; }
 }

@@ -6,6 +6,7 @@ using Lumina.Services.Auth;
 using Lumina.Services.Chat;
 using Lumina.Services.Documents;
 using Lumina.Services.Flashcards;
+using Lumina.Services.Folders;
 using Lumina.Services.Quizzes;
 using Lumina.WebSockets;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -119,6 +120,7 @@ builder.Services.AddSingleton<IBackgroundTaskQueue>(new BackgroundTaskQueue(100)
 builder.Services.AddHostedService<QuizBackgroundWorker>();
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IFlashcardService, FlashcardService>();
 builder.Services.AddScoped<IChatService, ChatService>();

@@ -287,6 +287,147 @@
   margin-left: -1px;
 }
 
+/* ── LIBRARY TOOLBAR (breadcrumbs + new folder) ───── */
+.lib-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
+}
+
+.crumb-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.crumb {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.crumb:hover {
+  color: var(--teal);
+}
+
+.crumb.current {
+  color: var(--teal);
+  cursor: default;
+}
+
+/* Drop-target cue while dragging a card onto an ancestor crumb. */
+.crumb[data-droppable='true'] {
+  color: var(--teal);
+  border-color: var(--teal);
+  background: rgba(62, 168, 200, 0.12);
+}
+
+.crumb-sep {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--text-light);
+  padding: 0 2px;
+}
+
+.lib-new-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--teal);
+  background: transparent;
+  border: 1px solid var(--border-t);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.lib-new-folder:hover {
+  background: rgba(62, 168, 200, 0.12);
+  border-color: var(--teal);
+}
+
+.folder-create {
+  flex-shrink: 0;
+}
+
+/* ── FOLDER CARD ──────────────────────────────────── */
+/* Mirrors .doc-card but is a <button> (drill-in), so reset button chrome. */
+.folder-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 18px;
+  padding-right: 44px;
+  border: 1px solid var(--border-t);
+  background: rgba(62, 168, 200, 0.06);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: background 0.15s, border-color 0.15s;
+  min-width: 0;
+}
+
+.folder-card:hover {
+  background: rgba(62, 168, 200, 0.14);
+  border-color: var(--teal);
+}
+
+.folder-card-edit {
+  cursor: default;
+}
+
+.folder-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--teal);
+  background: rgba(255, 255, 255, 0.6);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: var(--text-dark);
+}
+
+.folder-rename-input:focus {
+  outline: none;
+}
+
+/* Active drop target: a card accepting the dragged item. */
+.doc-card-wrap.drop-target .folder-card,
+.doc-card-wrap.drop-target {
+  border-color: var(--teal);
+  background: rgba(62, 168, 200, 0.2);
+}
+
+.doc-card-wrap[draggable='true'] {
+  cursor: grab;
+}
+
 /* ── DOCUMENT WORKSPACE ───────────────────────────── */
 .doc-ws-head {
   margin-bottom: 24px;

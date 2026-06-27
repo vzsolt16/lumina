@@ -23,7 +23,7 @@ public class DocumentsController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<UploadDocumentResponse>> Upload(
-        IFormFile? file)
+        IFormFile? file, [FromForm] Guid? folderId)
     {
         if (file is null || file.Length == 0)
         {
@@ -35,7 +35,7 @@ public class DocumentsController : ControllerBase
         {
             return BadRequest("File too large (max 2 MB).");
         }
-        
+
         var allowedExtensions = new[] { ".txt", ".md" };
 
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -45,13 +45,20 @@ public class DocumentsController : ControllerBase
             return BadRequest("Only .txt and .md files are supported.");
         }
 
-        var document = await _documentService.UploadAsync(file, User.GetUserId());
-
-        return Ok(new UploadDocumentResponse
+        try
         {
-            Id = document.Id,
-            FileName = document.FileName
-        });
+            var document = await _documentService.UploadAsync(file, User.GetUserId(), folderId);
+
+            return Ok(new UploadDocumentResponse
+            {
+                Id = document.Id,
+                FileName = document.FileName
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpGet]
@@ -73,6 +80,26 @@ public class DocumentsController : ControllerBase
         }
 
         return Ok(document);
+    }
+
+    [HttpPatch("{id:guid}/folder")]
+    public async Task<IActionResult> Move(Guid id, MoveDocumentRequest request)
+    {
+        try
+        {
+            var moved = await _documentService.MoveAsync(id, request.FolderId, User.GetUserId());
+
+            if (!moved)
+            {
+                return NotFound();
+            }
+
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpDelete("{id:guid}")]
