@@ -192,7 +192,7 @@ public class FolderService : IFolderService
         return folders.ToDictionary(f => f.Id);
     }
 
-    private static string NormalizeName(string name)
+    internal static string NormalizeName(string name)
     {
         name = (name ?? "").Trim();
 
@@ -211,7 +211,7 @@ public class FolderService : IFolderService
     }
 
     // No two folders may share a (case-insensitive) name under the same parent.
-    private static void EnsureNameAvailable(
+    internal static void EnsureNameAvailable(
         IEnumerable<Folder> folders, Guid? parentId, string name, Guid? excludeId)
     {
         var clash = folders.Any(f =>
@@ -226,7 +226,7 @@ public class FolderService : IFolderService
         }
     }
 
-    private static int DepthOf(Folder folder, Dictionary<Guid, Folder> folders)
+    internal static int DepthOf(Folder folder, Dictionary<Guid, Folder> folders)
     {
         var depth = 1;
         var current = folder;
@@ -240,7 +240,7 @@ public class FolderService : IFolderService
     }
 
     // Height of the subtree rooted at folderId, counting the folder itself as 1.
-    private static int SubtreeHeight(Guid folderId, Dictionary<Guid, Folder> folders)
+    internal static int SubtreeHeight(Guid folderId, Dictionary<Guid, Folder> folders)
     {
         var children = folders.Values.Where(f => f.ParentId == folderId).ToList();
 
@@ -253,7 +253,7 @@ public class FolderService : IFolderService
     }
 
     // Is candidateId inside the subtree rooted at ancestorId?
-    private static bool IsDescendant(Guid candidateId, Guid ancestorId, Dictionary<Guid, Folder> folders)
+    internal static bool IsDescendant(Guid candidateId, Guid ancestorId, Dictionary<Guid, Folder> folders)
     {
         var current = folders.GetValueOrDefault(candidateId);
         while (current?.ParentId is not null)
