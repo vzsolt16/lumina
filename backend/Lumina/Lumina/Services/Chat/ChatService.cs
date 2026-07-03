@@ -285,6 +285,10 @@ public class ChatService : IChatService
             "briefly and warmly. You are Lumina, an assistant that helps people understand their " +
             "documents.");
         sb.AppendLine(
+            "NEVER use standard emojis (e.g., 😊, ✅)." + 
+            "You may ONLY use kaomojis or ASCII art (e.g., (ɔ◔‿◔)ɔ, ¯(ツ)/¯, ♥) to add warmth or personality " +
+            "— but only if they are in the style of traditional kaomojis and not standard emojis.");
+        sb.AppendLine(
             "- Questions about the document's subject: answer from the document below.");
         sb.AppendLine(
             "- If the document doesn't cover something, you may still answer from your own " +
