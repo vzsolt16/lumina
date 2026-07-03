@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import DataStream from './components/DataStream.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import Landing from './pages/Landing.jsx'
@@ -11,10 +11,15 @@ import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
 
 export default function App() {
+  // Landing + auth run their own full-bleed "sleeve" chrome; the data-stream
+  // sidebar and its wrapper offset belong to the studio surfaces only.
+  const { pathname } = useLocation()
+  const isSleeve = pathname === '/' || pathname === '/login' || pathname === '/register'
+
   return (
     <>
-      <DataStream />
-      <div className="wrapper">
+      {!isSleeve && <DataStream />}
+      <div className={isSleeve ? undefined : 'wrapper'}>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />

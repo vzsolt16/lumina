@@ -1,318 +1,447 @@
-import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import Nav from '../components/Nav.jsx'
-import Footer from '../components/Footer.jsx'
-import { NotesIcon, FlashcardsIcon, QuizIcon, ChatIcon } from '../components/icons.jsx'
+import { useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import './Landing.css'
 
-const TICKER_ITEMS = [
-  'Flashcard generation', 'AI-powered quizzes', 'Spaced repetition',
-  'Study companion', 'Note processing', 'Progress tracking',
-  'Multi-subject support', 'Instant card creation',
+const TRACKS = [
+  { no: '01', name: 'upload', desc: 'add your notes or pdfs to start a new study session.', time: '0:07' },
+  { no: '02', name: 'flashcards', desc: 'automatically generated from your material — focus on remembering, not creating cards.', time: '∞' },
+  { no: '03', name: 'quiz', desc: 'test your understanding with questions generated directly from your notes.', time: '12:00' },
+  { no: '04', name: 'chat', desc: 'ask questions about your study material and explore topics without digging through pages of notes.', time: 'live' },
+  { no: '05', name: 'repeat', desc: 'until it sticks. the deck remembers where you left off.', time: '--:--' },
 ]
 
-const FEATURES = [
-  { num: '01 // NOTES', icon: NotesIcon, name: 'Notes', desc: 'Clean, distraction-free writing. Organise your material the way your mind works — Lumina keeps it structured without getting in the way.' },
-  { num: '02 // FLASH', icon: FlashcardsIcon, name: 'Flashcards', desc: 'Auto-generated or hand-crafted. Spaced repetition built in. Study the right cards at the right time — the system decides, you focus on learning.' },
-  { num: '03 // QUIZ', icon: QuizIcon, name: 'Quizzes', desc: 'Multiple choice, short answer — generated from your notes. Find the gaps before the exam does.' },
-  { num: '04 // COMP', icon: ChatIcon, name: 'Study Corner', desc: 'An AI companion that explains, quizzes back, and talks concepts through. Not a chatbot. A study partner that knows your material.' },
+const SPECS = [
+  { key: 'track 02', val: 'flashcards', note: 'automatically generated from your material.' },
+  { key: 'track 03', val: 'quizzes', note: 'built from your notes.' },
+  { key: 'track 04', val: 'chat', note: 'ask follow-up questions anytime.' },
+  { key: 'session', val: 'progress', note: 'continue where you left off.' },
 ]
 
-const STEPS = [
-  { num: '01', label: 'Input', title: 'Upload your material', desc: 'Drop a PDF, paste text, or write directly. Any subject. Any format. Lumina processes it immediately — no setup, no configuration.' },
-  { num: '02', label: 'Generate', title: 'Build your study set', desc: 'One click generates flashcards and quizzes from your content. Review the output, adjust what you like, and start studying immediately.' },
-  { num: '03', label: 'Execute', title: 'Study and track', desc: 'Flip cards, take tests, ask the companion. Your progress is tracked passively — you always know what needs more work without having to think about it.' },
-]
+const TICKER = 'active recall · flashcards · quizzes · ai chat · study sessions · spaced repetition · exam prep · learn faster ·'
 
-const STATS = [
-  { num: '12K+', label: 'Active students', width: '78%' },
-  { num: '3×', label: 'Retention improvement', width: '100%' },
-  { num: '50+', label: 'Subject areas', width: '55%' },
-  { num: '4.9', label: 'Average rating', width: '98%' },
-]
+/* ----------------------------------------------------------------
+   tiny 3d wireframe engine (no dependencies) — models are line
+   segments in unit space; render spins/tilts/projects per frame.
+   ---------------------------------------------------------------- */
+function buildDisc() {
+  const segs = []
+  const ring = (r, n, w) => {
+    for (let i = 0; i < n; i++) {
+      const a1 = (i / n) * Math.PI * 2
+      const a2 = ((i + 1) / n) * Math.PI * 2
+      segs.push({ a: [r * Math.cos(a1), r * Math.sin(a1), 0], b: [r * Math.cos(a2), r * Math.sin(a2), 0], w })
+    }
+  }
+  const arc = (r, a0, a1, n, w) => {
+    for (let i = 0; i < n; i++) {
+      const t1 = a0 + (a1 - a0) * (i / n)
+      const t2 = a0 + (a1 - a0) * ((i + 1) / n)
+      segs.push({ a: [r * Math.cos(t1), r * Math.sin(t1), 0], b: [r * Math.cos(t2), r * Math.sin(t2), 0], w })
+    }
+  }
+  ring(1.0, 120, 1)
+  ring(0.97, 120, 0.5)
+  ring(0.38, 60, 0.9)
+  ring(0.35, 60, 0.5)
+  ring(0.13, 40, 1)
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2
+    segs.push({ a: [0.38 * Math.cos(a), 0.38 * Math.sin(a), 0], b: [0.97 * Math.cos(a), 0.97 * Math.sin(a), 0], w: 0.35 })
+  }
+  // pseudo-random "data track" arcs — seeded so the disc is stable
+  let seed = 7
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 }
+  for (let k = 0; k < 14; k++) {
+    const r = 0.42 + rnd() * 0.5
+    const start = rnd() * Math.PI * 2
+    const span = 0.5 + rnd() * 2.2
+    arc(r, start, start + span, Math.ceil(span * 14), 0.65)
+  }
+  return segs
+}
 
-const TESTIMONIALS = [
-  { text: 'I used to dread revision. Lumina turned my lecture slides into flashcards in minutes and the quiz feature caught every gap in my knowledge before the exam.', author: 'Sara M.', role: 'MEDICAL_STUDENT · YEAR_03' },
-  { text: "The Study Corner is genuinely different. It doesn't just give you answers — it asks you questions back. I retained so much more just by talking through the material.", author: 'James K.', role: 'COMP_SCI · FINAL_YEAR' },
-  { text: "It doesn't demand my attention. I open it, run my session, close it. That's exactly what studying should feel like — clean signal, no noise.", author: 'Priya D.', role: 'SELF_STUDY · LANGUAGES' },
-]
+function buildIco() {
+  const p = (1 + Math.sqrt(5)) / 2
+  const s = 1 / Math.sqrt(1 + p * p)
+  const a = s, c = p * s
+  const v = [
+    [-a, c, 0], [a, c, 0], [-a, -c, 0], [a, -c, 0],
+    [0, -a, c], [0, a, c], [0, -a, -c], [0, a, -c],
+    [c, 0, -a], [c, 0, a], [-c, 0, -a], [-c, 0, a],
+  ].map((q) => [q[0] * 0.78, q[1] * 0.78, q[2] * 0.78])
+  const faces = [
+    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2],
+    [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5],
+    [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+  ]
+  const segs = []
+  const seen = {}
+  faces.forEach((f) => {
+    for (let i = 0; i < 3; i++) {
+      const x = f[i], y = f[(i + 1) % 3]
+      const key = Math.min(x, y) + '-' + Math.max(x, y)
+      if (!seen[key]) { seen[key] = 1; segs.push({ a: v[x], b: v[y], w: 1 }) }
+    }
+  })
+  return segs
+}
 
-const AI_BULLETS = [
-  'Explains concepts in plain language',
-  'Tests your understanding by asking back',
-  'Creates flashcards from the conversation',
-  'Knows your notes, not just the internet',
-]
+function makeScene(canvas, segs, opts, getScrollFrac, reduced) {
+  const ctx = canvas.getContext('2d')
+  let dpr = 1
 
-function Crosshairs({ full = true }) {
-  return (
-    <>
-      <div className="crosshair" style={{ top: '-1px', left: '-1px' }} />
-      <div className="crosshair tr" />
-      {full && <div className="crosshair bl" />}
-      {full && <div className="crosshair br" />}
-    </>
-  )
+  const fit = () => {
+    dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const rect = canvas.parentElement.getBoundingClientRect()
+    const size = Math.max(rect.width, 10)
+    canvas.width = size * dpr
+    canvas.height = size * dpr
+  }
+  fit()
+
+  const render = (t) => {
+    const w = canvas.width, h = canvas.height
+    ctx.clearRect(0, 0, w, h)
+    const cx = w / 2, cy = h / 2
+    const R = (w / 2) * 0.86
+    const sf = getScrollFrac()
+    const spin = opts.spin(t, sf)
+    const tilt = opts.tilt(t, sf)
+    const cs = Math.cos(spin), ss = Math.sin(spin)
+    const ct = Math.cos(tilt), st = Math.sin(tilt)
+    const persp = 3.1
+
+    const proj = (pt) => {
+      const x = pt[0] * cs - pt[1] * ss
+      const y = pt[0] * ss + pt[1] * cs
+      const y2 = y * ct - pt[2] * st
+      const z2 = y * st + pt[2] * ct
+      const k = persp / (persp - z2)
+      return [cx + x * R * k, cy + y2 * R * k, z2]
+    }
+
+    // two passes: seafoam fringe offset, then cyan main — cheap chromatic wash
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.lineWidth = dpr
+      for (let i = 0; i < segs.length; i++) {
+        const sgm = segs[i]
+        const A = proj(sgm.a), B = proj(sgm.b)
+        const depth = (A[2] + B[2]) / 2
+        const alpha = (0.28 + 0.55 * (depth + 1) / 2) * sgm.w
+        ctx.beginPath()
+        if (pass === 0) {
+          ctx.strokeStyle = 'rgba(127,230,180,' + (alpha * 0.28).toFixed(3) + ')'
+          ctx.moveTo(A[0] + 2.5 * dpr, A[1])
+          ctx.lineTo(B[0] + 2.5 * dpr, B[1])
+        } else {
+          ctx.strokeStyle = 'rgba(111,216,238,' + alpha.toFixed(3) + ')'
+          ctx.moveTo(A[0], A[1])
+          ctx.lineTo(B[0], B[1])
+        }
+        ctx.stroke()
+      }
+    }
+  }
+
+  const onResize = () => { fit(); if (reduced) render(1.2) }
+  window.addEventListener('resize', onResize)
+
+  if (reduced) {
+    render(1.2)
+    return () => window.removeEventListener('resize', onResize)
+  }
+
+  let visible = true
+  const io = new IntersectionObserver((en) => { visible = en[0].isIntersecting })
+  io.observe(canvas)
+
+  let raf
+  const loop = (now) => {
+    if (visible) render(now / 1000)
+    raf = requestAnimationFrame(loop)
+  }
+  raf = requestAnimationFrame(loop)
+
+  return () => {
+    cancelAnimationFrame(raf)
+    io.disconnect()
+    window.removeEventListener('resize', onResize)
+  }
 }
 
 export default function Landing() {
-  const navigate = useNavigate()
-  const tickerItems = [...TICKER_ITEMS, ...TICKER_ITEMS]
+  const rootRef = useRef(null)
+  const discRef = useRef(null)
+  const solidRef = useRef(null)
+  const meterFillRef = useRef(null)
+  const meterPctRef = useRef(null)
+  const scrollFracRef = useRef(0)
 
-  // Scroll-reveal motion. The hidden/animated states live behind
-  // [data-motion="ready"] + a prefers-reduced-motion guard in CSS, so without
-  // JS (or with reduced motion) every section renders visible at rest — the
-  // reveal only ever *enhances* an already-painted default.
   useEffect(() => {
-    const root = document.documentElement
-    const targets = document.querySelectorAll('.reveal, .reveal-soft, .stagger')
-    if (!targets.length) return
+    const root = rootRef.current
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+    /* reveals — hidden states only exist behind [data-motion="ready"], so the
+       default render is fully visible; motion only ever enhances it */
     root.setAttribute('data-motion', 'ready')
+    const revealed = Array.from(root.querySelectorAll('.rv'))
+    const inView = revealed.filter((el) => el.getBoundingClientRect().top < window.innerHeight)
+    let raf1, raf2
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => inView.forEach((el) => el.classList.add('in')))
+    })
 
-    const io = new IntersectionObserver(
-      (entries, obs) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('in-view')
-            obs.unobserve(entry.target)
-          }
-        }
-      },
-      { threshold: 0.15, rootMargin: '0px 0px -8% 0px' },
-    )
+    let io
+    if ('IntersectionObserver' in window && !reduced) {
+      io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target) }
+        })
+      }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' })
+      revealed.forEach((el) => io.observe(el))
+    } else {
+      revealed.forEach((el) => el.classList.add('in'))
+    }
 
-    targets.forEach((el) => io.observe(el))
+    /* session meter + hero pane parallax */
+    const panes = Array.from(root.querySelectorAll('[data-px]'))
+    const onScroll = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight
+      const frac = max > 0 ? window.scrollY / max : 0
+      scrollFracRef.current = frac
+      if (meterPctRef.current) meterPctRef.current.textContent = String(Math.round(frac * 100)).padStart(3, '0') + '%'
+      if (meterFillRef.current) meterFillRef.current.style.transform = 'scaleX(' + frac + ')'
+      if (!reduced) {
+        panes.forEach((p) => {
+          p.style.translate = '0 ' + (window.scrollY * parseFloat(p.getAttribute('data-px'))) + 'px'
+        })
+      }
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+
+    /* wireframe scenes */
+    const getFrac = () => scrollFracRef.current
+    const stopDisc = makeScene(discRef.current, buildDisc(), {
+      spin: (t, sf) => t * 0.16 + sf * 4.2,
+      tilt: (t, sf) => 1.12 + sf * 0.5 + Math.sin(t * 0.2) * 0.05,
+    }, getFrac, reduced)
+    const stopSolid = makeScene(solidRef.current, buildIco(), {
+      spin: (t, sf) => t * 0.3 + sf * 2.0,
+      tilt: (t) => 0.7 + Math.sin(t * 0.24) * 0.3,
+    }, getFrac, reduced)
+
     return () => {
-      io.disconnect()
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+      io?.disconnect()
+      window.removeEventListener('scroll', onScroll)
+      stopDisc()
+      stopSolid()
       root.removeAttribute('data-motion')
     }
   }, [])
 
   return (
-    <>
-      <Nav />
+    <div className="sleeve" ref={rootRef} id="top">
+      <header className="sl-nav">
+        <a className="sl-nav__brand" href="#top">
+          <span className="sl-nav__logo">lumina</span>
+          <span className="tag tag--dim">lmn·001</span>
+        </a>
+        <span className="sl-nav__cat tag tag--dim">study sessions</span>
+        <div className="sl-nav__meter" aria-hidden="true">
+          <span className="tag tag--dim lbl">session</span>
+          <span className="bar"><i ref={meterFillRef} /></span>
+          <span className="tag" ref={meterPctRef}>000%</span>
+        </div>
+        <Link className="sl-nav__play" to="/register">play</Link>
+      </header>
 
-      {/* HERO */}
+      {/* ============================ hero ============================ */}
       <section className="hero">
-        <div className="hero-bg-layer" aria-hidden="true">
-          <div className="panel-a"><Crosshairs /></div>
-          <div className="panel-b"><Crosshairs /></div>
-          <div className="panel-c"><Crosshairs full={false} /></div>
+        <div className="hero__marks" aria-hidden="true"><i /><i /><i /><i /></div>
+        <div className="hero__pane hero__pane--1" data-px="0.12" aria-hidden="true" />
+        <div className="hero__pane hero__pane--2" data-px="0.2" aria-hidden="true" />
+        <div className="hero__pane hero__pane--3" data-px="0.06" aria-hidden="true" />
+
+        <div className="hero__disc" aria-hidden="true"><canvas ref={discRef} /></div>
+
+        <div className="hero__corner hero__corner--tr">
+          stereo · 44.1&nbsp;khz<br />limited edition
+        </div>
+        <div className="hero__corner hero__corner--br">
+          47.4979°&nbsp;n · 19.0402°&nbsp;e<br />rendered locally
         </div>
 
-        <div className="hero-content stagger">
-          <div className="hero-pre">AI-powered study companion · v2.0</div>
-          <h1 className="hero-h1">
-            LEARN<br />
-            <span className="outline">DEEPER</span><br />
-            RETAIN MORE
-          </h1>
-          <div className="hero-sub">Contemporary Study Systems</div>
-          <p className="hero-desc">
-            Lumina transforms your notes into active study tools — flashcards,
-            quizzes, and an AI companion that works alongside you. Calm
-            interface. Smart engine.
-          </p>
-          <div className="hero-actions">
-            <button className="btn primary" onClick={() => navigate('/studio')}>
-              Start free session
-            </button>
-            <a className="btn ghost" href="#how">View protocol</a>
+        <div className="hero__head">
+          <h1 className="hero__title rv">lumina</h1>
+          <div className="hero__rules">
+            <div className="rule-tag rule-tag--left rv" data-d="1"><span className="tag">study tools</span></div>
+            <div className="rule-tag rule-tag--left rv" data-d="2"><span className="tag tag--dim">flashcards&nbsp;·&nbsp;quizzes&nbsp;·&nbsp;chat</span></div>
           </div>
         </div>
 
-        <div className="hero-card info-card reveal-soft" aria-hidden="true">
-          <div className="card-label">Active learners</div>
-          <div className="card-value">12,400</div>
-          <div className="card-desc">students studying with Lumina this month</div>
-          <div className="card-bar"><div className="card-bar-fill" /></div>
+        <div className="hero__foot">
+          <p className="hero__vol rv" data-d="2">study sessions <strong>vol.&nbsp;1</strong> — turn your notes into flashcards, quizzes, and conversations.</p>
+          <p className="hero__promo rv" data-d="3">put your notes on repeat.</p>
+          <div className="hero__cta rv" data-d="4">
+            <Link className="btn btn--solid" to="/register"><span className="tri" aria-hidden="true" />press play</Link>
+            <a className="btn btn--ghost" href="#tracklist">browse tracklist</a>
+          </div>
         </div>
-
-        <div className="hero-card stat-card reveal-soft" aria-hidden="true">
-          <div className="card-label">Avg. retention gain</div>
-          <div className="card-value">3×</div>
-          <div className="card-desc">improvement vs. passive reading</div>
-          <div className="card-bar"><div className="card-bar-fill" style={{ width: '88%' }} /></div>
-        </div>
-
-        <div className="hero-tag t1" aria-hidden="true">SYS·LUMINA·2.0</div>
-        <div className="hero-tag t2" aria-hidden="true">READY</div>
-        <div className="hero-tag t3" aria-hidden="true">0xFF·STUDY·OK</div>
       </section>
 
-      {/* TICKER */}
+      {/* =========================== ticker =========================== */}
       <div className="ticker" aria-hidden="true">
-        <div className="ticker-label">Lumina · Systems</div>
-        <div className="ticker-track">
-          {tickerItems.map((item, i) => (
-            <div className="ticker-item" key={i}>
-              <span className="ticker-dot" />
-              {item}
-            </div>
-          ))}
+        <div className="ticker__inner">
+          <span>{TICKER}</span>
+          <span>{TICKER}</span>
         </div>
       </div>
 
-      {/* FEATURES */}
-      <section id="features" className="features-section">
-        <div className="section">
-          <div className="reveal">
-            <div className="section-tag">Core modules</div>
-            <h2 className="section-heading">Study tools.<br />Built for focus.</h2>
-            <div className="section-sub">— Four components, one coherent system</div>
-          </div>
-          <div className="features-grid stagger">
-            {FEATURES.map((f) => {
-              const Icon = f.icon
-              return (
-              <div className="feat-cell" key={f.num}>
-                <div className="feat-num">{f.num}</div>
-                <div className="feat-icon-wrap"><Icon /></div>
-                <div className="feat-name">{f.name}</div>
-                <p className="feat-desc">{f.desc}</p>
-                <div className="feat-cell-footer">MODULE_STATUS: ACTIVE</div>
-              </div>
-              )
-            })}
+      {/* ========================= liner notes ======================== */}
+      <section className="sec liner" id="liner">
+        <div className="sec__in">
+          <div className="rule-tag rule-tag--left rv" style={{ marginBottom: '38px' }}><span className="tag">liner notes</span></div>
+          <div className="liner__grid">
+            <h2 className="liner__lede rv">you've had the file for weeks. <em>it's still not in your head.</em></h2>
+            <div className="liner__body rv" data-d="2">
+              <p>lumina turns your study material into interactive practice. upload lecture notes, slides, or pdfs and instantly study them with <strong>flashcards, quizzes, and ai-powered conversations</strong>.</p>
+              <p>no complicated setup. just bring your material and start studying.</p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
-      <section id="how" className="section">
-        <div className="reveal">
-          <div className="section-tag">Protocol</div>
-          <h2 className="section-heading">Three-step<br />study sequence</h2>
-          <div className="section-sub">— From raw notes to active retention</div>
-        </div>
-        <div className="how-grid stagger">
-          {STEPS.map((s) => (
-            <div className="how-cell" key={s.num}>
-              <div className="how-num" aria-hidden="true">{s.num}</div>
-              <div className="how-step-label">{s.label}</div>
-              <div className="how-title">{s.title}</div>
-              <p className="how-desc">{s.desc}</p>
-            </div>
+      {/* ========================= tracklist ========================== */}
+      <section className="sec tracks" id="tracklist">
+        <div className="sec__in">
+          <div className="tracks__head rv">
+            <h2 className="tracks__side">side a</h2>
+            <span className="tag tag--dim">the material</span>
+            <span className="tracks__note tag tag--dim">total running time — one exam season</span>
+          </div>
+
+          {TRACKS.map((t, i) => (
+            <Link className="track rv rv--l" data-d={i || undefined} to="/register" key={t.no}>
+              <span className="track__no">{t.no}</span>
+              <span className="track__main">
+                <span className="track__name">{t.name}</span>
+                <span className="track__desc">{t.desc}</span>
+              </span>
+              <span className="track__time">
+                <span className="track__eq" aria-hidden="true"><i /><i /><i /></span>
+                {t.time}
+              </span>
+            </Link>
           ))}
         </div>
       </section>
 
-      {/* STATS */}
-      <div className="stats-band">
-        <div className="stats-inner stagger">
-          {STATS.map((s) => (
-            <div className="stat-cell" key={s.label}>
-              <div className="stat-num">{s.num}</div>
-              <div className="stat-label">{s.label}</div>
-              <div className="stat-bar"><div className="stat-bar-fill" style={{ width: s.width }} /></div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* AI COMPANION */}
-      <section id="companion" className="section">
-        <div className="ai-grid">
-          <div className="reveal">
-            <div className="section-tag">AI Unit · 04</div>
-            <h2 className="section-heading">The companion<br />that asks back</h2>
-            <div className="section-sub">— More than answers. Active dialogue.</div>
-            <p className="ai-intro">
-              Lumina's Study Corner doesn't just retrieve information — it
-              engages. Ask a question, get an explanation. Ask again, and it
-              checks if you understood. It's studying, not searching.
-            </p>
-            <ul className="ai-bullets">
-              {AI_BULLETS.map((b) => (
-                <li key={b}><span />{b}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="reveal">
-            <div className="ai-window">
-              <div className="ai-window-bar">
-                <div className="ai-window-title">LUMINA · Study Corner · Session active</div>
-                <div className="ai-window-status">
-                  <div className="status-dot" />
-                  ONLINE
-                </div>
-              </div>
-              <div className="ai-window-body">
-                <div className="ai-msg user">
-                  <div className="ai-msg-label">// USER INPUT</div>
-                  Explain the difference between mitosis and meiosis.
-                </div>
-                <div className="ai-msg system">
-                  <div className="ai-msg-label">// LUMINA RESPONSE</div>
-                  Mitosis is your body's copy machine — it creates identical
-                  cells for growth and repair. Meiosis is for reproduction only:
-                  it halves the chromosome count to produce sperm and egg cells,
-                  shuffling the genetic deck in the process.
-                </div>
-                <div className="ai-msg user">
-                  <div className="ai-msg-label">// USER INPUT</div>
-                  So meiosis only happens in the gonads?
-                </div>
-                <div className="ai-msg system">
-                  <div className="ai-msg-label">// LUMINA RESPONSE</div>
-                  Correct. Want me to generate a flashcard pair to lock this in?
-                </div>
-              </div>
-              <div className="ai-input-row">
-                <input className="ai-input" type="text" placeholder="// INPUT QUERY" aria-label="Study Corner demo input" />
-                <button className="ai-send" tabIndex={-1}>SEND →</button>
-              </div>
-            </div>
+      {/* ================ thesis — retrieval beats rereading ========== */}
+      <section className="sec thesis" id="thesis">
+        <div className="sec__in">
+          <div className="thesis__frame rv">
+            <i aria-hidden="true" /><i aria-hidden="true" /><i aria-hidden="true" /><i aria-hidden="true" />
+            <h2 className="thesis__line">reading isn't enough. <em>retrieval is.</em></h2>
+            <p className="thesis__body rv" data-d="2">research consistently shows that <strong>actively recalling information beats passive rereading</strong> for long-term retention. lumina helps you practice recall by turning your notes into flashcards, quizzes, and conversations — all from the material you're already studying.</p>
           </div>
         </div>
       </section>
 
-      {/* TESTIMONIALS */}
-      <section className="testi-section">
-        <div className="section">
-          <div className="reveal">
-            <h2 className="section-heading">Field notes</h2>
-            <div className="section-sub">— From students currently in the system</div>
+      {/* ================ interlude — built for studying =============== */}
+      <section className="sec frost" id="interlude">
+        <div className="sec__in">
+          <div className="frost__head">
+            <div className="rule-tag rule-tag--left rv"><span className="tag tag--ink">interlude — built for studying</span></div>
+            <h2 className="frost__title rv rv--blur" data-d="1">everything you need in one session</h2>
           </div>
-          <div className="testi-grid stagger">
-            {TESTIMONIALS.map((t) => (
-              <div className="testi-cell" key={t.author}>
-                <div className="testi-quote" aria-hidden="true">"</div>
-                <p className="testi-text">{t.text}</p>
-                <div className="testi-author">{t.author}</div>
-                <div className="testi-role">{t.role}</div>
+          <p className="frost__copy rv" data-d="2">lumina keeps everything in one place. read your material, review flashcards, test yourself with quizzes, and <strong>ask questions whenever you get stuck</strong> — switching between study tools shouldn't interrupt your focus.</p>
+
+          <div className="spec-grid">
+            {SPECS.map((s, i) => (
+              <div className="spec rv" data-d={i + 1} key={s.val}>
+                <span className="spec__key">{s.key}</span>
+                <span className="spec__val">{s.val}</span>
+                <p className="spec__note">{s.note}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <div className="cta-band">
-        <div className="cta-inner">
-          <div className="reveal">
-            <h2 className="cta-heading">
-              Begin your<br />
-              <span className="line2">first session</span>
-            </h2>
-            <div className="cta-note">FREE_ACCESS · NO_CARD · NO_CONFIG · WORKS_NOW</div>
+      {/* ===================== side b — the loop ====================== */}
+      <section className="sec sideb" id="sideb">
+        <div className="sec__in">
+          <div className="sideb__head rv">
+            <h2 className="sideb__side">side b</h2>
+            <span className="tag tag--acid">the loop</span>
           </div>
-          <div className="cta-actions reveal">
-            <button className="btn-cta main" onClick={() => navigate('/studio')}>
-              Create free account
-            </button>
-            <button
-              className="btn-cta alt"
-              onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })}
-            >
-              See how it works
-            </button>
+          <div className="sideb__grid">
+            <div>
+              <div className="loop-words" aria-label="read, drill, ask, repeat">
+                <span className="rv rv--l">read.</span>
+                <span className="rv rv--l" data-d="1">drill.</span>
+                <span className="rv rv--l" data-d="2">ask.</span>
+                <span className="rv rv--l" data-d="3"><b>repeat.</b></span>
+              </div>
+              <p className="sideb__copy rv" data-d="4">stop whenever you want and continue later. <strong>your flashcards, quizzes, and conversations are ready when you come back.</strong></p>
+            </div>
+            <div className="sideb__solid rv" data-d="2">
+              <canvas ref={solidRef} aria-hidden="true" />
+              <span className="tag tag--acid">recall_object · rotating</span>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <Footer />
-    </>
+      {/* ============================ outro =========================== */}
+      <section className="sec outro" id="outro">
+        <div className="sec__in">
+          <div className="rule-tag outro__kick rv"><span className="tag">final track</span></div>
+          <h2 className="outro__title rv" data-d="1">press play</h2>
+          <p className="outro__sub rv" data-d="2">the session starts when you do. bring your notes — we'll help you learn them.</p>
+          <div className="outro__cta rv" data-d="3">
+            <Link className="btn btn--solid" to="/register"><span className="tri" aria-hidden="true" />begin session</Link>
+            <Link className="btn btn--ghost" to="/login">resume session</Link>
+          </div>
+
+          <div className="outro__cat rv" data-d="2">
+            <div className="barcode" aria-hidden="true">
+              <svg width="150" height="44" viewBox="0 0 150 44" fill="none">
+                <g fill="#9fcfdd">
+                  <rect x="0" width="3" height="44" /><rect x="5" width="1" height="44" /><rect x="9" width="2" height="44" />
+                  <rect x="14" width="1" height="44" /><rect x="17" width="4" height="44" /><rect x="23" width="1" height="44" />
+                  <rect x="27" width="2" height="44" /><rect x="31" width="3" height="44" /><rect x="36" width="1" height="44" />
+                  <rect x="40" width="1" height="44" /><rect x="44" width="2" height="44" /><rect x="49" width="4" height="44" />
+                  <rect x="55" width="1" height="44" /><rect x="59" width="3" height="44" /><rect x="64" width="1" height="44" />
+                  <rect x="68" width="2" height="44" /><rect x="72" width="1" height="44" /><rect x="76" width="3" height="44" />
+                  <rect x="82" width="1" height="44" /><rect x="85" width="2" height="44" /><rect x="90" width="4" height="44" />
+                  <rect x="96" width="1" height="44" /><rect x="100" width="2" height="44" /><rect x="105" width="1" height="44" />
+                  <rect x="109" width="3" height="44" /><rect x="114" width="1" height="44" /><rect x="118" width="2" height="44" />
+                  <rect x="123" width="1" height="44" /><rect x="127" width="4" height="44" /><rect x="133" width="1" height="44" />
+                  <rect x="137" width="2" height="44" /><rect x="142" width="1" height="44" /><rect x="146" width="3" height="44" />
+                </g>
+              </svg>
+              <span className="num">5&nbsp;012026&nbsp;000001</span>
+            </div>
+            <div className="outro__credits">
+              <b>lumina</b> · lmn·001 · study sessions vol. 1<br />
+              built for students<br />
+              © 2026 lumina
+            </div>
+            <nav className="outro__links" aria-label="footer">
+              <Link to="/register">sign up</Link>
+              <Link to="/login">sign in</Link>
+              <a href="#top">rewind</a>
+            </nav>
+          </div>
+        </div>
+      </section>
+
+      <div className="fx-scan" aria-hidden="true" />
+      <div className="fx-grain" aria-hidden="true" />
+    </div>
   )
 }

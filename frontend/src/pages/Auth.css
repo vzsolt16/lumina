@@ -1,114 +1,178 @@
-/* Auth screens — login / register. Reuses the Gen X Soft Club tokens. */
+/* Auth screens — login / register. Sleeve variant: the deep wash from the
+   landing (tokens + nav + tags come from Landing.css via .sleeve). */
 
-.auth-wrap {
-  min-height: calc(100vh - 60px);
+.sleeve--auth {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+.sleeve--auth .auth-stage {
+  position: relative;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: 116px clamp(20px, 5vw, 64px) 64px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 78% 30%, rgba(111, 216, 238, 0.18) 0%, transparent 55%),
+    radial-gradient(90% 70% at 15% 85%, rgba(90, 202, 174, 0.10) 0%, transparent 60%),
+    linear-gradient(160deg, #0e4256 0%, #0a3140 42%, #06222e 100%);
 }
 
-.auth-card {
-  width: 100%;
-  max-width: 420px;
-  background: var(--panel);
-  border: 1px solid var(--border-w);
-  backdrop-filter: blur(16px);
-  padding: 40px;
-  box-shadow: 0 20px 60px -30px rgba(15, 42, 56, 0.4);
+/* one blurred "lounge" pane drifting behind the panel */
+.sleeve--auth .auth-stage__pane {
+  position: absolute;
+  z-index: var(--z-deco);
+  width: 44vw; height: 90vh;
+  left: 8vw; top: 8vh;
+  background: linear-gradient(170deg, rgba(217, 242, 248, 0.10), rgba(111, 216, 238, 0.03));
+  border: 1px solid var(--hair-w);
+  transform: skewY(-7deg);
+  filter: blur(2px);
+  pointer-events: none;
 }
 
-.auth-card .section-tag {
-  margin-bottom: 12px;
+.sleeve--auth .auth-stage__corner {
+  position: absolute;
+  top: 72px; right: clamp(20px, 5vw, 64px);
+  z-index: var(--z-content);
+  font-size: 0.62rem; letter-spacing: 0.26em; text-transform: uppercase;
+  text-align: right;
+  color: var(--ice-dim); font-weight: 500;
 }
 
-.auth-card .section-heading {
-  font-size: clamp(1.8rem, 3vw, 2.4rem);
-  margin-bottom: 6px;
+/* ── the panel ─────────────────────────────────────── */
+.sleeve--auth .auth-sleeve {
+  position: relative;
+  z-index: var(--z-content);
+  width: min(440px, 100%);
+  padding: 38px 34px 34px;
+  background: rgba(217, 242, 248, 0.05);
+  border: 1px solid var(--hair-c);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-.auth-card .section-sub {
-  margin-bottom: 32px;
+/* crosshair corner marks, same reticle as the landing frames */
+.sleeve--auth .auth-sleeve > i {
+  position: absolute; width: 18px; height: 18px;
+  border-color: rgba(111, 216, 238, 0.5); border-style: solid; border-width: 0;
+}
+.sleeve--auth .auth-sleeve > i:nth-of-type(1) { top: -1px; left: -1px; border-top-width: 1px; border-left-width: 1px; }
+.sleeve--auth .auth-sleeve > i:nth-of-type(2) { top: -1px; right: -1px; border-top-width: 1px; border-right-width: 1px; }
+.sleeve--auth .auth-sleeve > i:nth-of-type(3) { bottom: -1px; left: -1px; border-bottom-width: 1px; border-left-width: 1px; }
+.sleeve--auth .auth-sleeve > i:nth-of-type(4) { bottom: -1px; right: -1px; border-bottom-width: 1px; border-right-width: 1px; }
+
+.sleeve--auth .auth-kick { margin-bottom: 18px; }
+
+.sleeve--auth .auth-title {
+  font-family: var(--font-disp);
+  font-weight: 400;
+  font-size: clamp(1.6rem, 4.5vw, 2.2rem);
+  line-height: 1.1;
+  letter-spacing: 0.03em;
+  color: var(--ice);
 }
 
-.auth-field {
-  margin-bottom: 20px;
+.sleeve--auth .auth-sub {
+  color: var(--ice-dim);
+  font-size: 0.95rem;
+  margin: 10px 0 30px;
 }
 
-.auth-label {
+/* ── fields ────────────────────────────────────────── */
+.sleeve--auth .auth-field { margin-bottom: 20px; }
+
+.sleeve--auth .auth-label {
   display: block;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.16em;
+  font-weight: 600;
+  font-size: 0.62rem;
+  letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: var(--text-mid);
+  color: var(--ice-dim);
   margin-bottom: 8px;
 }
 
-.auth-input {
+.sleeve--auth .auth-input {
   width: 100%;
-  height: 44px;
+  height: 48px;
   padding: 0 14px;
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-tech);
   font-size: 0.95rem;
-  color: var(--text-dark);
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid var(--border-t);
+  color: var(--ice);
+  background: rgba(217, 242, 248, 0.07);
+  border: 1px solid var(--hair-c);
   outline: none;
   transition: border-color 0.2s, background 0.2s;
 }
 
-.auth-input:focus {
-  border-color: var(--teal);
-  background: rgba(255, 255, 255, 0.8);
+.sleeve--auth .auth-input:focus {
+  border-color: var(--cyan);
+  background: rgba(217, 242, 248, 0.12);
 }
 
-.auth-submit {
-  width: 100%;
-  margin-top: 8px;
+/* keep browser autofill from painting the pale default over the wash */
+.sleeve--auth .auth-input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #0d3949 inset;
+  -webkit-text-fill-color: var(--ice);
+  caret-color: var(--ice);
 }
 
-.auth-hint {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.62rem;
-  letter-spacing: 0.06em;
-  color: var(--text-light);
-  margin-top: -8px;
-  margin-bottom: 20px;
+.sleeve--auth .auth-hint {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: var(--ice-dim);
+  margin: -8px 0 20px;
 }
 
-.auth-error {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.72rem;
-  color: #c0392b;
-  background: rgba(192, 57, 43, 0.08);
-  border: 1px solid rgba(192, 57, 43, 0.25);
+.sleeve--auth .auth-error {
+  font-size: 0.8rem;
+  color: #ffb4a4;
+  background: rgba(255, 110, 86, 0.09);
+  border: 1px solid rgba(255, 110, 86, 0.35);
   padding: 10px 12px;
   margin-bottom: 20px;
   word-break: break-word;
 }
 
-.auth-switch {
+/* ── submit + switch ───────────────────────────────── */
+.sleeve--auth .auth-submit {
+  width: 100%;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.sleeve--auth .auth-submit:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sleeve--auth .auth-switch {
   margin-top: 28px;
   padding-top: 20px;
-  border-top: 1px solid var(--border-t);
-  font-family: 'Barlow Condensed', sans-serif;
+  border-top: 1px solid var(--hair-c);
   font-size: 0.85rem;
-  letter-spacing: 0.04em;
-  color: var(--text-mid);
+  color: var(--ice-dim);
   text-align: center;
 }
 
-.auth-switch a {
-  color: var(--teal2);
+.sleeve--auth .auth-switch a {
+  color: var(--cyan);
   font-weight: 600;
   text-decoration: none;
 }
 
-.auth-switch a:hover {
-  text-decoration: underline;
+.sleeve--auth .auth-switch a:hover { text-decoration: underline; }
+
+@media (max-width: 480px) {
+  .sleeve--auth .auth-sleeve { padding: 30px 22px 26px; }
 }
 
+/* ── session-restore splash (used by ProtectedRoute on studio surfaces,
+      which still run the pale theme — leave on theme.css tokens) ──── */
 .auth-booting {
   min-height: 60vh;
   display: flex;

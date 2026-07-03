@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import Nav from '../components/Nav.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import './Landing.css'
 import './Auth.css'
 
 export default function Register() {
@@ -28,18 +28,32 @@ export default function Register() {
   }
 
   return (
-    <>
-      <Nav showSectionLinks={false} />
-      <div className="auth-wrap">
-        <form className="auth-card" onSubmit={handleSubmit}>
-          <div className="section-tag">Access · New unit</div>
-          <div className="section-heading">Create account</div>
-          <div className="section-sub">— Spin up your own study workspace</div>
+    <div className="sleeve sleeve--auth">
+      <header className="sl-nav">
+        <Link className="sl-nav__brand" to="/">
+          <span className="sl-nav__logo">lumina</span>
+          <span className="tag tag--dim">lmn·001</span>
+        </Link>
+        <span className="sl-nav__cat tag tag--dim">study sessions</span>
+        <Link className="sl-nav__play" to="/login">sign in</Link>
+      </header>
 
-          {error && <div className="auth-error">// ERROR: {error}</div>}
+      <main className="auth-stage">
+        <div className="auth-stage__pane" aria-hidden="true" />
+        <div className="auth-stage__corner" aria-hidden="true">
+          stereo · 44.1&nbsp;khz<br />limited edition
+        </div>
+
+        <form className="auth-sleeve" onSubmit={handleSubmit}>
+          <i aria-hidden="true" /><i aria-hidden="true" /><i aria-hidden="true" /><i aria-hidden="true" />
+          <div className="rule-tag rule-tag--left auth-kick"><span className="tag">new session</span></div>
+          <h1 className="auth-title">create account</h1>
+          <p className="auth-sub">set up your account and put your notes on repeat.</p>
+
+          {error && <div className="auth-error" role="alert">error — {error}</div>}
 
           <div className="auth-field">
-            <label className="auth-label" htmlFor="email">Email</label>
+            <label className="auth-label" htmlFor="email">email</label>
             <input
               id="email"
               className="auth-input"
@@ -52,7 +66,7 @@ export default function Register() {
           </div>
 
           <div className="auth-field">
-            <label className="auth-label" htmlFor="password">Password</label>
+            <label className="auth-label" htmlFor="password">password</label>
             <input
               id="password"
               className="auth-input"
@@ -68,15 +82,19 @@ export default function Register() {
             min 8 chars · 1 uppercase · 1 lowercase · 1 digit
           </div>
 
-          <button className="btn primary auth-submit" type="submit" disabled={submitting}>
-            {submitting ? 'Creating…' : 'Create account'}
+          <button className="btn btn--solid auth-submit" type="submit" disabled={submitting}>
+            <span className="tri" aria-hidden="true" />
+            {submitting ? 'creating…' : 'begin session'}
           </button>
 
           <div className="auth-switch">
-            Already have an account? <Link to="/login">Log in</Link>
+            already have an account? <Link to="/login">sign in</Link>
           </div>
         </form>
-      </div>
-    </>
+      </main>
+
+      <div className="fx-scan" aria-hidden="true" />
+      <div className="fx-grain" aria-hidden="true" />
+    </div>
   )
 }

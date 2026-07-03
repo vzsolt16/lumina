@@ -2,7 +2,9 @@
 
 ## Register
 
-product
+product — the Studio app is a tool that serves focused work. The landing/marketing surface
+(`frontend/landing-softclub.html`) runs in **brand register**: it sells the experience of a
+study session via the "study sessions vol. 1" record-sleeve concept, not the feature list.
 
 ## Users
 
@@ -30,15 +32,17 @@ metrics.
 
 ## Brand Personality
 
-**Sharp, capable, precise.** Lumina should feel like a well-made instrument — fast,
-technical, and trustworthy. Confident without shouting. The voice is direct and competent:
-system-style labels, clear status, no filler and no hand-holding cheerfulness. It respects
-that the user came to work. Three words: **precise, technical, composed.**
+**Atmospheric, precise, composed.** Lumina should feel like a limited-edition release you put
+on, not software you operate: a study *session* with a mood, run by a quiet, capable machine.
+The voice is direct and lowercase-calm — sleeve-style labels, clear status, no filler and no
+hand-holding cheerfulness. It sells the experience of studying, and respects that the user
+came to work. Three words: **immersive, technical, composed.**
 
-This is already carried visually by the established "Gen X Soft Club" system (see
-`DESIGN.md` at the project root): airy teal-on-pale-blue glass, hairline borders, sharp
-corners, monospace data labels — *clean signal, no noise.* Personality and visuals agree:
-the interface signals competence rather than personality-as-decoration.
+This is carried visually by the leaned-in "Gen X Soft Club" system (see `DESIGN.md` at the
+project root, canonical surface `frontend/landing-softclub.html`): drenched washed-teal
+record-sleeve washes, film grain and hairline rules, rounded Y2K techno type, CD-catalog
+ephemera — *the page is the sleeve, the product is the session.* The technical chrome still
+behaves as signal: every tag, meter, and track number reports something true.
 
 ## Anti-references
 
@@ -50,7 +54,8 @@ the interface signals competence rather than personality-as-decoration.
 - **Consumer flashcard apps (Quizlet-style)** — busy, ad-heavy, candy-colored, social-feed
   clutter. Lumina is calm and single-purpose.
 - Also off-limits (from the visual system): warm tones, rounded corners on structure, drop
-  shadows, gradient text, neon/glow, serif fonts.
+  shadows, gradient text, neon glow (the small chromatic print-fringe is the sanctioned
+  exception), serif and monospace fonts.
 
 ## Design Principles
 
@@ -71,10 +76,10 @@ the interface signals competence rather than personality-as-decoration.
 
 ## Accessibility & Inclusion
 
-- **WCAG 2.1 AA.** Body text ≥4.5:1 against its background; large/bold text ≥3:1. This needs
-  active vigilance given the low-contrast teal-on-pale-blue palette — the muted `--text-light`
-  slate is the likely failure point for body and placeholder text; keep prose toward
-  `--text-dark` / `--text-mid`.
+- **WCAG 2.1 AA.** Body text ≥4.5:1 against its background; large/bold text ≥3:1. On the dark
+  washes, primary inks (`ice` on deep, `mint` on moss) clear AA comfortably; the vigilance
+  points are `ice-dim` carrying long-form prose (keep it to supporting copy), `acid` anywhere
+  beyond short accents, and ink-on-frost pairings in the light interlude sections.
 - **Color-blind safe.** Never rely on color alone to carry meaning. Quiz correct/incorrect
   states, live/offline status dots, and progress/error states must pair color with an icon,
   shape, or text label.

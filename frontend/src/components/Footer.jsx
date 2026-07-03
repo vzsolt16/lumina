@@ -3,9 +3,9 @@ export default function Footer() {
     <footer>
       <div className="footer-inner">
         <div>
-          <div className="footer-logo">LUMINA</div>
+          <div className="footer-logo">lumina</div>
           <div className="footer-system" style={{ marginTop: '4px' }}>
-            STUDY_SYSTEMS · BUILD_2026.1
+            lmn·001 · study sessions vol. 1
           </div>
         </div>
         <ul className="footer-links">
@@ -13,7 +13,7 @@ export default function Footer() {
           <li><a href="#">Terms</a></li>
           <li><a href="#">Contact</a></li>
         </ul>
-        <div className="footer-system">© 2026 Lumina. All rights reserved.</div>
+        <div className="footer-system">© 2026 lumina · built for students</div>
       </div>
     </footer>
   )

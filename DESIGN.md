@@ -1,53 +1,58 @@
 ---
 name: Lumina
-description: Gen X Soft Club study companion — pale teal glass, hairline wireframe, monospace signal.
+description: Gen X Soft Club, leaned all the way in — drenched washed-teal record sleeve, lowercase techno type, hairline wireframe, grain.
 colors:
-  bg: "#d8edf5"
-  bg2: "#c4e2f0"
-  teal: "#3ea8c8"
-  teal-deep: "#2790b0"
-  cyan: "#58c8e0"
+  deep: "#06222e"
+  deep-2: "#0a3140"
+  deep-3: "#0e3d4f"
+  ice: "#d9f2f8"
+  ice-dim: "#9fcfdd"
+  cyan: "#6fd8ee"
+  cyan-soft: "#58c8e0"
   seafoam: "#5acaae"
-  text-dark: "#0f2a38"
-  text-mid: "#2a5468"
-  text-light: "#5a8498"
-  off-white: "#f4fafd"
-  panel: "#ffffff61"
-  panel-blue: "#b4dcf073"
-  border-teal: "#3ea8c84d"
-  border-white: "#ffffff99"
-  grid: "#3ea8c826"
+  frost: "#e9f6fa"
+  frost-2: "#d8edf5"
+  ink: "#0f2a38"
+  ink-mid: "#2a5468"
+  moss: "#0a2e20"
+  moss-2: "#0e3a29"
+  mint: "#d7f5e4"
+  acid: "#7fe6b4"
+  hair-cyan: "#6fd8ee47"
+  hair-ice: "#d9f2f838"
+  hair-green: "#7fe6b447"
+  hair-ink: "#0f2a3840"
 typography:
   display:
-    fontFamily: "'Barlow Condensed', sans-serif"
-    fontSize: "clamp(3.5rem, 7vw, 5.5rem)"
-    fontWeight: 700
-    lineHeight: 0.95
-    letterSpacing: "-0.01em"
-  headline:
-    fontFamily: "'Barlow Condensed', sans-serif"
-    fontSize: "clamp(2rem, 4vw, 3rem)"
-    fontWeight: 700
+    fontFamily: "'Audiowide', 'Trebuchet MS', sans-serif"
+    fontSize: "clamp(2.9rem, 10.5vw, 6rem)"
+    fontWeight: 400
     lineHeight: 1
-    letterSpacing: "0.02em"
-  title:
-    fontFamily: "'Barlow Condensed', sans-serif"
-    fontSize: "1.2rem"
-    fontWeight: 600
+    letterSpacing: "0.04em"
+  headline:
+    fontFamily: "'Audiowide', 'Trebuchet MS', sans-serif"
+    fontSize: "clamp(1.9rem, 4.6vw, 3.4rem)"
+    fontWeight: 400
     lineHeight: 1.1
-    letterSpacing: "0.06em"
+    letterSpacing: "0.02em"
+  statement:
+    fontFamily: "'Jura', 'Century Gothic', sans-serif"
+    fontSize: "clamp(1.7rem, 4vw, 3rem)"
+    fontWeight: 300
+    lineHeight: 1.3
+    letterSpacing: "0.01em"
   body:
-    fontFamily: "'Barlow', sans-serif"
-    fontSize: "0.9rem"
+    fontFamily: "'Jura', 'Century Gothic', sans-serif"
+    fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.7
     letterSpacing: "normal"
-  label:
-    fontFamily: "'Share Tech Mono', monospace"
-    fontSize: "0.65rem"
-    fontWeight: 400
+  tag:
+    fontFamily: "'Jura', 'Century Gothic', sans-serif"
+    fontSize: "0.66rem"
+    fontWeight: 600
     lineHeight: 1.4
-    letterSpacing: "0.18em"
+    letterSpacing: "0.32em"
 rounded:
   none: "0px"
 spacing:
@@ -56,33 +61,36 @@ spacing:
   md: "24px"
   lg: "40px"
   xl: "64px"
-  xxl: "88px"
+  section: "clamp(88px, 14vh, 150px)"
 components:
   button-primary:
-    backgroundColor: "{colors.teal}"
-    textColor: "{colors.off-white}"
+    backgroundColor: "{colors.cyan}"
+    textColor: "{colors.deep}"
     rounded: "{rounded.none}"
-    padding: "0 28px"
-    height: "44px"
-    typography: "{typography.label}"
+    padding: "0 30px"
+    height: "52px"
+    typography: "{typography.tag}"
   button-primary-hover:
-    backgroundColor: "{colors.teal-deep}"
-    textColor: "{colors.off-white}"
+    backgroundColor: "{colors.seafoam}"
+    textColor: "{colors.deep}"
   button-ghost:
-    backgroundColor: "#ffffff4d"
-    textColor: "{colors.text-mid}"
+    backgroundColor: "#d9f2f80f"
+    textColor: "{colors.ice}"
+    border: "1px solid {colors.hair-cyan}"
     rounded: "{rounded.none}"
-    padding: "0 28px"
-    height: "44px"
+    padding: "0 30px"
+    height: "52px"
   input-field:
-    backgroundColor: "#ffffff8c"
-    textColor: "{colors.text-dark}"
+    backgroundColor: "#d9f2f80f"
+    textColor: "{colors.ice}"
+    border: "1px solid {colors.hair-cyan}"
     rounded: "{rounded.none}"
     padding: "0 14px"
-    height: "44px"
+    height: "52px"
   panel:
-    backgroundColor: "#ffffff66"
-    textColor: "{colors.text-dark}"
+    backgroundColor: "#d9f2f80a"
+    textColor: "{colors.ice}"
+    border: "1px solid {colors.hair-cyan}"
     rounded: "{rounded.none}"
 ---
 
@@ -90,181 +98,235 @@ components:
 
 ## 1. Overview
 
-**Creative North Star: "Clean Signal, No Noise"**
+**Creative North Star: "The page is the record sleeve; the product is the session."**
 
-Lumina's interface is **Gen X Soft Club**: a Y2K-adjacent technical language built from pale
-blue-teal washes, semi-transparent glass panels, hairline wireframe overlays, and monospace
-data typography. It reads as a precise instrument — a study console rather than a study *app* —
-without ever turning cold or aggressive. The mood is soft-toned, airy, and composed: a quiet
-machine that shows its work.
+Lumina's interface is **Gen X Soft Club, leaned all the way in**: a late-90s ambient-compilation
+language built from drenched washed-teal gradients, film grain and scanlines, hairline rules,
+rounded Y2K techno type, and CD-sleeve ephemera (catalog numbers, tracklists, barcodes, session
+meters). It reads like a limited-edition release you found in 1999 — a *session* you put on, not
+software you operate. The canonical reference surface is `frontend/landing-softclub.html`; the
+mood sources are `frontend/example1–4.jpeg` (Gen X *Ambient Lounge*, Aphex Twin *SAW 85–92*,
+Y2K transparent hardware, green grainy street photography).
 
-This system serves a focused student at a desk, mid study-session, who came to do work. So the
-chrome behaves like signal, not decoration: every monospace tag, status dot, and progress bar
-carries real state (what document, what mode, what the machine is doing right now). The
-"technical" surface is a *language*, never ornament — if a wireframe mark or a `SYSTEM_LABEL`
-isn't reporting something true, it doesn't belong.
+The chrome still behaves like signal, not decoration: every tag, meter, and track number reports
+something true (what session, what progress, what track). But the register has shifted from
+"quiet instrument" to "immersive sleeve" — the surface sells the *experience of studying*, and the
+features present themselves as tracks on a record.
 
-It explicitly rejects the look of the category it lives in. **Not** the generic AI-chat SaaS
-(purple/indigo gradients, hero-metric templates, "✨ powered by AI" sparkle). **Not** gamified
-ed-tech (mascots, streaks, confetti, candy color). **Not** the busy, ad-heavy consumer
-flashcard app. Lumina is single-purpose and calm; recall is the reward, not a badge.
+It still explicitly rejects the category's look. **Not** generic AI-chat SaaS (purple gradients,
+hero metrics, sparkle). **Not** gamified ed-tech (mascots, streaks, confetti). **Not** the busy
+consumer flashcard app. Lumina is single-purpose and atmospheric; recall is the reward.
 
 **Key Characteristics:**
-- Tinted everything — no neutral grays, no pure black or white.
-- Glass over grid — translucent panels layered on a fixed teal wireframe.
+- Drenched, not airy — the surface IS the color: deep washed teal, with a frost interlude and a
+  green "side b" as sanctioned per-section art direction.
+- Texture over gloss — film grain, scanlines, blurred glass panes, hairline rules.
 - Sharp corners always (0px radius), flat always (no shadows).
-- Three voices of type: condensed display, humanist body, monospace data labels.
-- One saturated hue (teal); everything else stays desaturated and airy.
+- Two voices of type, both lowercase: Audiowide display, Jura everything else.
+- One saturated signal (cyan); seafoam speaks only for live/play; acid only on green sections.
 
 ## 2. Colors
 
-A single saturated teal carries the whole system; every other value is a desaturated
-blue-teal tint. Transparency and layering do the work that solid fills and shadows do elsewhere.
+The palette is three washes and one signal. Side A (deep teal) is the default world; the frost
+and the green wash are deliberate section-level shifts, like flipping the record over.
 
-### Primary
-- **Signal Teal** (`#3EA8C8`): the only saturated hue. Accents, active labels, focus borders,
-  primary buttons, progress fills, the wireframe grid. Used as the system's single "voice."
-- **Deep Teal** (`#2790B0`): the pressed/hover state of Signal Teal on solid surfaces.
+### Side A — the deep wash (default)
+- **Deep** (`#06222E`): the deepest wash; page background, footer fade.
+- **Deep-2** (`#0A3140`): section wash, a half-step lifted.
+- **Deep-3** (`#0E3D4F`): lifted wash for emphasis panels and gradient tops.
+- **Ice** (`#D9F2F8`): primary ink on dark. All prose and headings on the deep wash.
+- **Ice-dim** (`#9FCFDD`): secondary ink — supporting copy, tags, metadata.
+- **Signal Cyan** (`#6FD8EE`): the one saturated voice. Accents, links, primary buttons,
+  emphasis spans, wireframe 3D strokes, focus outlines, the session meter.
+- **Cyan-soft** (`#58C8E0`): quieter cyan for secondary accents.
+- **Seafoam** (`#5ACAAE`): reserved for *live / play / success* — hover state of play buttons,
+  EQ bars, "live" markers. The only second hue allowed on Side A.
 
-### Secondary
-- **Cyan Highlight** (`#58C8E0`): rare brightening accent for emphasis within teal contexts.
-- **Seafoam** (`#5ACAAE`): reserved exclusively for *live / success / online* state — the
-  pulsing status dot, "ONLINE", completion. The only place a second hue is allowed to speak.
+### The Frost — light interlude sections
+- **Frost** (`#E9F6FA`) / **Frost-2** (`#D8EDF5`): pale section washes for the "interlude".
+- **Ink** (`#0F2A38`) / **Ink-mid** (`#2A5468`): primary / secondary text on frost.
 
-### Neutral
-- **Pale Sky** (`#D8EDF5`): the page background. The canvas the glass floats on.
-- **Soft Blue** (`#C4E2F0`): secondary background / nav fill, a half-step darker than the page.
-- **Dark Navy** (`#0F2A38`): primary text and headings. The ink end of the ramp.
-- **Blue-Grey** (`#2A5468`): secondary text and body prose. Safe for sustained reading.
-- **Slate** (`#5A8498`): muted/passive labels and metadata **only** — see the Contrast Floor Rule.
-- **Near White** (`#F4FAFD`): text on solid teal surfaces. Stands in for pure white, which is banned.
+### Side B — the green wash
+- **Moss** (`#0A2E20`) / **Moss-2** (`#0E3A29`): deep green section washes.
+- **Mint** (`#D7F5E4`): primary ink on green.
+- **Acid** (`#7FE6B4`): the green wash's signal accent. Never leaves Side B sections.
 
-### Glass & Structure (transparency tokens)
-- **White Glass** (`rgba(255,255,255,0.38–0.55)`): the default frosted panel fill, over `blur(10–16px)`.
-- **Blue Glass** (`rgba(180,220,240,0.45)`): alternate panel fill for layered depth.
-- **Teal Border** (`rgba(62,168,200,0.3)`): structural hairline borders, cell dividers.
-- **White Border** (`rgba(255,255,255,0.6)`): glass-panel edges layered over backgrounds.
-- **Grid Teal** (`rgba(62,168,200,0.15)`): the fixed 60×60px background wireframe.
+### Hairlines & structure (transparency tokens)
+- **Cyan hairline** (`rgba(111,216,238,0.28)`): default borders, rules, dividers on dark.
+- **Ice hairline** (`rgba(217,242,248,0.22)`): edges of glass panes over imagery/washes.
+- **Green hairline** (`rgba(127,230,180,0.28)`): Side B's structural lines.
+- **Ink hairline** (`rgba(15,42,56,0.25)`): borders and grid gaps on frost sections.
 
 ### Named Rules
-**The One Hue Rule.** Signal Teal is the only saturated color on any screen. Seafoam is permitted
-*only* to mean live/success. If a third saturated hue appears, the system is broken.
+**The One Signal Rule.** Cyan (`#6FD8EE`) is the only saturated voice on any deep-wash screen.
+Seafoam may speak *only* to mean live/play/success. Acid may speak *only* inside a green Side B
+section. If a fourth saturated hue appears, the system is broken.
 
-**The Contrast Floor Rule.** Body and interactive text must clear WCAG AA (≥4.5:1) against its
-glass-on-sky background. Slate (`#5A8498`) clears AA on Pale Sky but is reserved for *passive*
-metadata; **prose, labels users must read, and placeholders use Blue-Grey (`#2A5468`) or darker.**
-When in doubt, step toward Dark Navy. Elegance is never a reason to drop contrast.
+**The Three Washes Rule.** Per-section art direction is sanctioned — deep teal, frost, green —
+but a *section commits to one wash*; washes never mix inside a section, and the green wash never
+carries primary CTAs.
+
+**The Contrast Floor Rule.** Prose and interactive text on the deep wash use Ice (`#D9F2F8`);
+on frost use Ink or Ink-mid; on moss use Mint. Ice-dim clears AA on the deep washes and may carry
+supporting copy, but long-form reading defaults to Ice. Acid is for short accents, never body
+text. Elegance is never a reason to drop contrast.
 
 **The No-Pure Rule.** Never `#000` or `#fff`, never an untinted gray. Every neutral is tinted
-blue-teal; warmth (amber/orange/brown/cream) is forbidden outright.
+toward its wash; warmth (amber/orange/brown/cream) is forbidden outright.
 
 ## 3. Typography
 
-**Display Font:** Barlow Condensed (sans-serif fallback)
-**Body Font:** Barlow (sans-serif fallback)
-**Label/Mono Font:** Share Tech Mono (monospace fallback)
+**Display Font:** Audiowide (single weight, rounded Y2K techno; `Trebuchet MS` fallback)
+**Text Font:** Jura 300–700 (rounded technical sans; `Century Gothic` fallback)
 
-**Character:** A three-register system pairing on contrast, not similarity. Condensed display
-type shouts headlines in uppercase; a humanist sans carries calm prose; a monospace face speaks
-the machine's data language. The contrast between condensed caps, relaxed body, and tracked
-mono *is* the aesthetic.
+Share Tech Mono and Barlow/Barlow Condensed are **retired** — they belong to the previous, airier
+system and do not appear in this direction.
+
+**Character:** Two voices pairing on contrast. Audiowide is "the label" — the wordmark, section
+titles, big display moments, always lowercase, wide and rounded like a 1999 compilation logo.
+Jura carries everything else: light 300 for big statements, 400 for prose, 600 tracked-tiny for
+the sleeve-ephemera tags. Its rounded terminals echo the Aphex-style tracklist type.
 
 ### Hierarchy
-- **Display** (Barlow Condensed 700, `clamp(3.5rem, 7vw, 5.5rem)`, line-height 0.95, UPPERCASE):
-  hero headlines only. Secondary lines may use outline text (`-webkit-text-stroke: 1.5px teal;
-  color: transparent`).
-- **Headline** (Barlow Condensed 700, `clamp(2rem, 4vw, 3rem)`, line-height 1, UPPERCASE):
-  section headings.
-- **Title** (Barlow Condensed 600, `~1.2rem`, UPPERCASE, tracked `0.06em`): card and panel titles.
-- **Body** (Barlow 400, `0.82–0.9rem`, line-height 1.7, sentence case): all prose. Cap measure at
-  65–75ch. Weight 300 allowed for large descriptive intros only, never small body.
-- **Label** (Share Tech Mono, `0.58–0.72rem`, tracked `0.08–0.2em`, UPPERCASE): system tags,
-  status, section markers, build strings. Multi-word values use underscores: `MODULE_STATUS: ACTIVE`.
+- **Display** (Audiowide 400, `clamp(2.9rem, 10.5vw, 6rem)`, line-height 1, tracked `0.04em`,
+  lowercase): the wordmark and hero-scale moments only. May carry the chromatic fringe
+  (see Elevation).
+- **Headline** (Audiowide 400, `clamp(1.9rem, 4.6vw, 3.4rem)`, line-height 1.1, lowercase):
+  section headings ("side a", "everything you need in one session").
+- **Statement** (Jura 300, `clamp(1.7rem, 4vw, 3rem)`, line-height 1.3, lowercase): editorial
+  ledes and big manifesto lines; emphasis via a 500–600-weight cyan `<em>`, never italics.
+- **Body** (Jura 400, `0.82–1rem`, line-height 1.7, sentence case): all prose. Cap measure at
+  58–65ch. Emphasis via 600 weight in the wash's primary ink.
+- **Tag** (Jura 600, `0.62–0.72rem`, tracked `0.22–0.34em`, UPPERCASE): the sleeve-ephemera
+  voice — catalog numbers, section markers, durations, status. The only uppercase in the system.
 
 ### Named Rules
-**The Three Voices Rule.** Condensed display, humanist body, monospace data. Never blur them —
-prose is never set in the mono face; system labels are never set in the body face.
+**The Lowercase Rule.** Display and heading type is lowercase — a deliberate reversal of the old
+uppercase system. The record sleeve whispers its titles. Only Tag-voice ephemera is uppercase.
 
-**The Uppercase Display Rule.** All display and heading type is uppercase. Sentence-case headings
-break the system. Prose stays sentence case.
+**The Two Voices Rule.** Audiowide is the label; Jura is everything else. Prose is never set in
+Audiowide; the wordmark is never set in Jura. No third family, no mono.
 
-**The Mono-Is-Data Rule.** Share Tech Mono is reserved for things the machine reports — status,
-IDs, counts, timestamps, section markers. Never use it for content a human wrote.
+**The Ephemera Rule.** The Tag voice is reserved for things the sleeve reports — catalog numbers
+(`lmn·001`), track numbers, durations, session progress, status. If a tag isn't reporting
+something true, it doesn't belong.
 
 ## 4. Elevation
 
-This system is **flat by doctrine — no drop shadows, ever.** Depth comes entirely from
-*translucency and layering*: frosted glass panels (`background: rgba(255,255,255,0.4);
-backdrop-filter: blur(10–16px)`) stack over a fixed background wireframe, and overlapping
-semi-transparent planes read as depth the way shadows would elsewhere. Hairline borders separate
-planes; the grid shows through the glass to signal "above."
+Still **flat by doctrine — no drop shadows, ever.** Depth now comes from *atmosphere*, in layers:
+
+1. **Wash gradients**: large radial/linear gradients inside a section's wash (cyan glow at one
+   corner, seafoam breath at another) create space the way lighting does on a sleeve photograph.
+2. **Blurred panes**: translucent, hairline-bordered, slightly skewed rectangles
+   (`filter: blur(2px)`, ice-tint gradients) float behind content like out-of-focus lounge
+   architecture.
+3. **Texture overlays**: a fixed film-grain layer (inline SVG `feTurbulence`, `opacity 0.09`,
+   `mix-blend-mode: overlay`) plus a scanline layer (repeating 1px gradient) sit above everything,
+   pointer-events none. They are the "print" of the sleeve.
+4. **Hairlines**: 1px tinted rules separate planes and cells; crosshair corner marks (18–20px
+   L-shapes) frame hero-scale containers.
+5. **Chromatic fringe**: display type and wireframe 3D get a misregistered-print offset — a cyan
+   shadow a few px one way, a fainter seafoam shadow the other (`text-shadow: 3px 0 0
+   rgba(111,216,238,0.35), -3px 0 0 rgba(90,202,174,0.22)`). This is print misregistration, not
+   neon glow; keep offsets small and alphas low.
 
 ### Named Rules
-**The Flat-Glass Rule.** Surfaces never cast shadows. If something needs to feel lifted, raise its
-opacity or layer it over the grid — don't reach for `box-shadow`.
+**The Flat-Wash Rule.** Surfaces never cast shadows. If something needs to feel lifted, lift its
+wash (deep → deep-3), brighten its hairline, or float a blurred pane behind it.
 
-**The Hairline Divider Rule.** Grids divide cells with a `gap: 1px` over a `background: teal-border`
-container, **never** per-cell borders (which double up). One pixel, teal-tinted, always.
+**The Hairline Divider Rule.** Grids divide cells with a `gap: 1px` over a hairline-token
+container background, never per-cell borders. One pixel, wash-tinted, always.
+
+**The Grain-Is-Global Rule.** Grain and scanlines cover the whole viewport, including nav — the
+sleeve is printed in one pass. They are decorative only (`aria-hidden`, pointer-events none) and
+never carry information.
 
 ## 5. Components
 
 ### Buttons
-- **Shape:** sharp rectangles, 0px radius. Barlow Condensed 600, uppercase, tracked `0.14–0.16em`.
-- **Primary:** solid Signal Teal (`#3EA8C8`) fill, Near White text, 44px tall, `0 28px` padding.
-- **Hover / Focus:** primary darkens to Deep Teal (`#2790B0`); 0.2s transition; no transform, no glow.
-- **Ghost:** translucent white fill (`rgba(255,255,255,0.3)`) + blur, teal hairline border, Blue-Grey text.
-- **Flush pairs:** side-by-side buttons share an edge via `margin-left: -1px` (no double border).
+- **Shape:** sharp rectangles, 0px radius, 52px tall, `0 30px` padding. Jura 700, uppercase Tag
+  voice, tracked `0.3em`.
+- **Primary ("press play"):** solid Signal Cyan fill, Deep text, optional play-triangle glyph.
+  Hover shifts to Seafoam (play = live). 0.2s ease; no transform, no glow.
+- **Ghost:** translucent ice fill (`rgba(217,242,248,0.06)`), cyan hairline border, Ice text;
+  hover lifts fill to `rgba(111,216,238,0.14)`.
+- **Flush pairs:** side-by-side buttons separated by a `1px` gap, sharing the sleeve's hairline
+  grid rather than touching.
 
 ### Inputs / Fields
-- **Style:** translucent white fill (`rgba(255,255,255,0.55)`), 1px teal hairline border, 0px radius,
-  44px tall. Body face for forms; mono face for the terminal/chat query input.
-- **Focus:** border shifts to solid Signal Teal, fill brightens (`rgba(255,255,255,0.8)`). No glow.
-- **Placeholder:** must clear AA — use Blue-Grey-strength, not a faded slate. (See Contrast Floor Rule.)
+- **Style:** translucent ice fill on the deep wash, 1px cyan hairline, 0px radius, 52px tall,
+  Ice text. On frost sections: white-translucent fill with ink hairline.
+- **Focus:** border shifts to solid Signal Cyan; `outline: 1px solid cyan` offset 3px for
+  keyboard focus. No glow.
+- **Placeholder:** Ice-dim at minimum; never fainter.
 
-### Cards / Panels (glass panel — signature)
-- **Corner Style:** 0px, always sharp.
-- **Background:** White Glass (`rgba(255,255,255,0.4)`) over `backdrop-filter: blur(12px)`.
-- **Border:** 1px teal hairline (`rgba(62,168,200,0.3)`); white-tint border when layered over imagery.
-- **Shadow Strategy:** none — see Elevation.
-- **Panel bar:** optional header strip in `rgba(62,168,200,0.1)` with a mono uppercase title.
-- **Hover (on grid cells):** subtle fill lift to `rgba(255,255,255,0.35–0.45)`. No transform.
+### Nav (the sleeve spine)
+- 52px fixed bar, deep translucent fill (`rgba(6,34,46,0.72)`) over `backdrop-filter: blur(14px)`,
+  cyan hairline bottom border. Cells divided by full-height hairlines: wordmark + catalog tag,
+  section tag, session meter, and a solid-cyan "play" cell as the persistent CTA.
+- **Session meter:** a 72px hairline track with a cyan `scaleX` fill plus a `042%`-style Tag
+  readout — live scroll/session progress, never fake.
 
-### Navigation
-- **Style:** 60px sticky bar, `backdrop-filter: blur(16px)`, Soft Blue translucent fill, teal
-  bottom hairline. Links are full-height, bordered left/right, uppercase Barlow Condensed.
-- **Hover:** full-cell fill `rgba(62,168,200,0.12)`, text to Dark Navy.
-- **Logo:** Barlow Condensed 700 uppercase + a light-weight mono descriptor split by a left border.
+### Tracklist rows (signature)
+- Features and sequences present as record tracks: Tag-voice track number in cyan, Jura 500
+  lowercase name, Ice-dim description, right-aligned Tag-voice duration. Rows divided by cyan
+  hairlines; hover fills the row `rgba(111,216,238,0.08)` and may surface seafoam EQ bars
+  (animated only under no-preference motion).
 
-### Crosshair Corners (signature)
-Large decorative containers use 20×20px L-shaped corner marks (teal hairlines) instead of a full
-border — a targeting-reticle / wireframe motif. Reserve for hero panels and big decorative frames,
-never on functional cards.
+### Spec cards (frost sections)
+- Hairline-gapped grid (`repeat(auto-fit, minmax(230px, 1fr))`, 1px ink-hairline gaps). Cards are
+  "clear plastic": white-to-cyan translucent gradient fill over `backdrop-filter: blur(10px)`,
+  a static diagonal glare sweep, Tag-voice key, Audiowide value, Ink-mid note.
 
-### Status & Progress (signature)
-- **Live dot:** 5px Seafoam circle, `animation: pulse 2s ease-in-out infinite`, paired with an
-  uppercase mono `ONLINE` label — color is never the only signal.
-- **Progress:** 2px teal fill on a teal-border track, with a mono `%` / count label alongside.
+### Sleeve ephemera (signature)
+- **Rule-tags:** a Tag-voice label sitting on a hairline rule (the cover-bar motif).
+- **Crosshair corners:** L-shaped corner marks framing hero panels and thesis frames.
+- **Corner data:** tiny Tag-voice blocks pinned to hero corners (`stereo · 44.1 khz`,
+  coordinates). Ephemera must obey the Ephemera Rule — playful is fine, false is not.
+- **Barcode:** SVG stripe block + spaced digits in the footer catalog panel.
+
+### Wireframe 3D (signature)
+- Hand-rolled canvas line renderers (no libraries): the spinning CD on Side A, the icosahedron
+  "recall object" on Side B. Thin strokes in the section's signal color with a chromatic-fringe
+  second pass; depth-faded alpha; scroll-scrubbed rotation plus slow idle spin.
+- Decorative only (`aria-hidden`), paused off-screen, and rendered as a **static frame** under
+  `prefers-reduced-motion: reduce`.
+
+### Motion
+- Scroll reveals rise 26px with `cubic-bezier(0.16,1,0.3,1)` staggers; reveals *enhance* an
+  already-visible default — content is never gated on scroll (no-JS and reduced-motion show
+  everything immediately).
+- The ticker marquee, EQ bars, glare sweeps, parallax panes, and canvas spin all stop under
+  `prefers-reduced-motion: reduce`. No bounce, no elastic, ever.
 
 ## 6. Do's and Don'ts
 
 ### Do:
-- **Do** keep Signal Teal (`#3EA8C8`) as the only saturated hue; let Seafoam speak only for live/success.
-- **Do** convey depth with translucency + `backdrop-filter: blur()` over the fixed grid — never shadow.
-- **Do** keep every corner sharp (0px radius) on cards, panels, inputs, buttons, windows.
-- **Do** set all headings uppercase in Barlow Condensed; keep prose sentence-case in Barlow.
-- **Do** reserve Share Tech Mono for machine data (status, IDs, counts, markers).
-- **Do** divide grids with a single teal-tinted `gap: 1px` over a bordered container.
-- **Do** pair every color-coded state with a non-color cue — quiz correct/incorrect, live/offline,
-  and error states get an icon, shape, or text label too (color-blind safety is a stated bar).
-- **Do** keep prose and placeholders at Blue-Grey (`#2A5468`) or darker for AA contrast on the pale bg.
+- **Do** keep Signal Cyan as the only saturated voice on the deep wash; Seafoam only for
+  live/play/success; Acid only inside Side B green sections.
+- **Do** commit each section to one wash (deep / frost / moss) and let hard cuts between washes
+  read as sleeve panels.
+- **Do** keep every corner sharp (0px) and every surface shadowless; depth is wash + grain +
+  hairline + blurred panes.
+- **Do** set display type lowercase in Audiowide and reserve uppercase for the tracked Tag voice.
+- **Do** make ephemera true: session meters show real progress, track numbers number real
+  sequences, catalog tags name real things.
+- **Do** ship reduced-motion fallbacks for every animation (static disc frame, no marquee,
+  instant reveals) and keep prose at the wash's primary ink (Ice / Ink / Mint).
+- **Do** pair every color-coded state with a non-color cue (icon, shape, or text label).
 
 ### Don't:
-- **Don't** look like generic AI-chat SaaS — no purple/indigo gradients, no hero-metric template,
-  no decorative glassmorphism beyond the established glass system, no "powered by AI" sparkle.
+- **Don't** look like generic AI-chat SaaS — no purple/indigo, no hero-metric template, no
+  "powered by AI" sparkle.
 - **Don't** look like gamified ed-tech — no mascots, streaks, confetti, badges, or candy color.
-- **Don't** look like a busy consumer flashcard app — no clutter, ads, or social-feed noise.
-- **Don't** use warm tones (amber, orange, brown, cream) or any neutral gray. Everything is teal-tinted.
-- **Don't** use drop shadows, rounded corners, gradient text, neon/glow, or serif fonts.
-- **Don't** use pure `#000` or `#fff`.
-- **Don't** let Slate (`#5A8498`) carry body prose or anything users must read — it's passive metadata only.
-- **Don't** add a colored side-stripe (`border-left`/`right` > 1px) as a card/alert accent — full hairline or nothing.
+- **Don't** use warm tones (amber, orange, brown, cream) or untinted grays; never pure `#000`
+  or `#fff`.
+- **Don't** use drop shadows, rounded corners, gradient text, or serif fonts. The chromatic
+  fringe is a small print-misregistration offset, not a neon glow — don't grow it into one.
+- **Don't** bring back the retired voices: no Share Tech Mono, no Barlow, no uppercase display
+  headings.
+- **Don't** let Acid or Seafoam carry prose, CTAs, or anything outside their assigned meanings.
+- **Don't** add a colored side-stripe (`border-left`/`right` > 1px) as a card/alert accent —
+  full hairline or nothing.
+- **Don't** let grain, scanlines, or ephemera carry information — atmosphere is never the only
+  signal.

@@ -1,0 +1,3 @@
+<!DOCTYPE html><html><body><script>
+fetch('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({email:'sleeve-demo@lumina.dev',password:'Passw0rd1'})}).then(r=>{document.title='SEED_'+r.status})
+</script></body></html>

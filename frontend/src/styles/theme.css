@@ -1,6 +1,7 @@
 /* ============================================================
-   Lumina — Design System (Gen X Soft Club)
-   Tokens + global chrome shared across landing + studio.
+   Lumina — Design System (Gen X Soft Club, leaned all the way in)
+   Tokens + global chrome for the studio surfaces. The landing and
+   auth pages run the same system via the .sleeve scope (Landing.css).
    Source of truth: DESIGN.md (project root) + PRODUCT.md. Do not deviate.
    ============================================================ */
 
@@ -13,29 +14,39 @@
 }
 
 :root {
-  --bg: #d8edf5;
-  --bg2: #c4e2f0;
-  --panel: rgba(255, 255, 255, 0.38);
-  --panel2: rgba(180, 220, 240, 0.45);
-  --teal: #3ea8c8;
-  --teal2: #2790b0;
+  /* washes */
+  --bg: #0a3140;
+  --bg2: #0e3d4f;
+  --panel: rgba(217, 242, 248, 0.05);
+  --panel2: rgba(111, 216, 238, 0.08);
+
+  /* signal */
+  --teal: #6fd8ee;      /* the one saturated voice (cyan signal) */
+  --teal2: #5acaae;     /* hover state of solid signal fills */
   --cyan: #58c8e0;
-  --seafoam: #5acaae;
-  /* Text-safe accent variants — AA (≥4.5:1) on the pale glass surfaces.
-     The bright accents above are for fills/borders/dots; use these when the
-     accent must carry *text* (labels, feedback, counts). See DESIGN.md Contrast Floor Rule. */
-  --teal-text: #18708a;
-  --seafoam-text: #1a7259;
-  /* Sole sanctioned warm hue: semantic error/incorrect. -text variant clears AA on glass. */
-  --error: #c0556a;
-  --error-text: #a8344a;
-  --text-dark: #0f2a38;
-  --text-mid: #2a5468;
-  --text-light: #5a8498;
-  --white: #f4fafd;
-  --border-t: rgba(62, 168, 200, 0.3);
-  --border-w: rgba(255, 255, 255, 0.6);
-  --grid: rgba(62, 168, 200, 0.15);
+  --seafoam: #5acaae;   /* live / success only */
+
+  /* accent-as-text variants — AA (≥4.5:1) on the deep washes */
+  --teal-text: #6fd8ee;
+  --seafoam-text: #7fd9be;
+
+  /* sole sanctioned warm hue: semantic error/incorrect */
+  --error: #e8836f;
+  --error-text: #ffb4a4;
+
+  /* ink ramp on the dark wash */
+  --text-dark: #d9f2f8;   /* primary ("ice") */
+  --text-mid: #9fcfdd;    /* secondary prose */
+  --text-light: #7fb0c2;  /* passive metadata only */
+  --white: #06222e;       /* ink on solid signal fills (name is historical) */
+
+  --border-t: rgba(111, 216, 238, 0.28);
+  --border-w: rgba(217, 242, 248, 0.22);
+  --grid: rgba(111, 216, 238, 0.06);
+
+  /* two voices */
+  --font-disp: 'Audiowide', 'Trebuchet MS', sans-serif;
+  --font-tech: 'Jura', 'Century Gothic', sans-serif;
 
   /* Motion — exponential ease-outs (no bounce, no elastic) */
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
@@ -47,35 +58,39 @@ html {
 }
 
 body {
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-tech);
   background: var(--bg);
   color: var(--text-dark);
   overflow-x: hidden;
   min-height: 100vh;
 }
 
-/* ── BACKGROUND TEXTURE ──────────────────────────── */
+/* ── BACKGROUND WASH ─────────────────────────────── */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   background:
-    linear-gradient(135deg, rgba(90, 202, 174, 0.08) 0%, transparent 50%),
-    linear-gradient(220deg, rgba(62, 168, 200, 0.12) 0%, transparent 60%),
-    radial-gradient(ellipse 80% 60% at 70% 30%, rgba(180, 225, 245, 0.5) 0%, transparent 70%);
+    radial-gradient(90% 70% at 75% 10%, rgba(111, 216, 238, 0.13) 0%, transparent 55%),
+    radial-gradient(80% 60% at 10% 95%, rgba(90, 202, 174, 0.08) 0%, transparent 60%);
   pointer-events: none;
   z-index: 0;
 }
 
-/* ── GRID OVERLAY ─────────────────────────────────── */
+/* ── GRID + SCANLINE OVERLAY ─────────────────────── */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
   background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px, transparent 3px,
+      rgba(6, 34, 46, 0.10) 3px, rgba(6, 34, 46, 0.10) 4px
+    ),
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 60px 60px;
+  background-size: auto, 60px 60px, 60px 60px;
   pointer-events: none;
   z-index: 0;
 }
@@ -89,7 +104,7 @@ body::after {
   height: 100vh;
   overflow: hidden;
   z-index: 5;
-  background: rgba(15, 42, 56, 0.07);
+  background: rgba(6, 34, 46, 0.55);
   border-right: 1px solid var(--border-t);
   display: flex;
   flex-direction: column;
@@ -98,9 +113,10 @@ body::after {
 }
 
 .data-stream span {
-  font-family: 'Share Tech Mono', monospace;
+  font-family: var(--font-tech);
+  font-weight: 600;
   font-size: 7px;
-  color: rgba(62, 168, 200, 0.5);
+  color: rgba(111, 216, 238, 0.45);
   letter-spacing: 0.05em;
   white-space: nowrap;
   animation: stream-scroll 20s linear infinite;
@@ -122,7 +138,7 @@ body::after {
 }
 
 /* ── NAV ──────────────────────────────────────────── */
-nav {
+.app-nav {
   position: sticky;
   top: 0;
   z-index: 100;
@@ -131,17 +147,16 @@ nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(196, 226, 240, 0.7);
-  backdrop-filter: blur(16px);
+  background: rgba(6, 34, 46, 0.72);
+  backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border-t);
 }
 
 .nav-logo {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-weight: 700;
-  font-size: 1.5rem;
+  font-family: var(--font-disp);
+  font-weight: 400;
+  font-size: 1.05rem;
   letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--text-dark);
   display: flex;
   align-items: center;
@@ -150,9 +165,10 @@ nav {
 }
 
 .nav-logo .logo-mark {
-  font-weight: 300;
-  font-size: 0.65rem;
-  letter-spacing: 0.2em;
+  font-family: var(--font-tech);
+  font-weight: 600;
+  font-size: 0.62rem;
+  letter-spacing: 0.3em;
   color: var(--text-light);
   text-transform: uppercase;
   border-left: 1px solid var(--border-t);
@@ -178,24 +194,24 @@ nav {
   height: 60px;
   line-height: 60px;
   text-decoration: none;
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.78rem;
-  font-weight: 500;
-  letter-spacing: 0.14em;
+  font-family: var(--font-tech);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--text-mid);
   transition: background 0.2s, color 0.2s;
 }
 
 .nav-links a:hover {
-  background: rgba(62, 168, 200, 0.12);
+  background: rgba(111, 216, 238, 0.12);
   color: var(--text-dark);
 }
 
 .nav-links a:focus-visible,
 .btn-nav:focus-visible {
-  outline: 2px solid var(--teal2);
-  outline-offset: -2px;
+  outline: 1px solid var(--teal);
+  outline-offset: -1px;
 }
 
 .nav-cta {
@@ -206,10 +222,10 @@ nav {
 .btn-nav {
   height: 32px;
   padding: 0 18px;
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
+  font-family: var(--font-tech);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   cursor: pointer;
   border: 1px solid var(--border-t);
@@ -222,7 +238,7 @@ nav {
 }
 
 .btn-nav.ghost:hover {
-  background: rgba(62, 168, 200, 0.1);
+  background: rgba(111, 216, 238, 0.12);
   color: var(--text-dark);
 }
 
@@ -235,6 +251,7 @@ nav {
 
 .btn-nav.solid:hover {
   background: var(--teal2);
+  border-color: var(--teal2);
 }
 
 /* ── SECTION BASE ─────────────────────────────────── */
@@ -245,9 +262,11 @@ nav {
 }
 
 .section-tag {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.18em;
+  font-family: var(--font-tech);
+  font-weight: 600;
+  font-size: 0.66rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
   color: var(--teal-text);
   margin-bottom: 10px;
   display: flex;
@@ -263,20 +282,19 @@ nav {
 }
 
 .section-heading {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-weight: 700;
-  font-size: clamp(2rem, 4vw, 3rem);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  font-family: var(--font-disp);
+  font-weight: 400;
+  font-size: clamp(1.7rem, 3.4vw, 2.5rem);
+  text-transform: lowercase;
+  letter-spacing: 0.03em;
   color: var(--text-dark);
-  line-height: 1;
+  line-height: 1.1;
   margin-bottom: 8px;
 }
 
 .section-sub {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-style: italic;
-  font-size: 1rem;
+  font-family: var(--font-tech);
+  font-size: 0.95rem;
   color: var(--text-mid);
   margin-bottom: 56px;
   letter-spacing: 0.04em;
@@ -286,10 +304,10 @@ nav {
 .btn {
   height: 44px;
   padding: 0 28px;
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.16em;
+  font-family: var(--font-tech);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   cursor: pointer;
   border: 1px solid var(--border-t);
@@ -307,7 +325,7 @@ nav {
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--teal2);
+  outline: 1px solid var(--teal);
   outline-offset: 2px;
 }
 
@@ -319,23 +337,24 @@ nav {
 
 .btn.primary:not(:disabled):hover {
   background: var(--teal2);
+  border-color: var(--teal2);
 }
 
 .btn.ghost {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(217, 242, 248, 0.06);
   color: var(--text-mid);
   backdrop-filter: blur(8px);
 }
 
 .btn.ghost:not(:disabled):hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(111, 216, 238, 0.14);
   color: var(--text-dark);
 }
 
 /* ── FOOTER ───────────────────────────────────────── */
 footer {
   border-top: 1px solid var(--border-t);
-  background: rgba(15, 42, 56, 0.05);
+  background: rgba(4, 24, 32, 0.6);
 }
 
 .footer-inner {
@@ -350,19 +369,20 @@ footer {
 }
 
 .footer-logo {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-weight: 700;
-  font-size: 1.1rem;
+  font-family: var(--font-disp);
+  font-weight: 400;
+  font-size: 0.95rem;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--text-dark);
 }
 
 .footer-system {
-  font-family: 'Share Tech Mono', monospace;
+  font-family: var(--font-tech);
+  font-weight: 600;
   font-size: 0.6rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
   color: var(--text-mid);
-  letter-spacing: 0.12em;
 }
 
 .footer-links {
@@ -382,9 +402,10 @@ footer {
 .footer-links a {
   display: block;
   padding: 6px 16px;
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.65rem;
-  letter-spacing: 0.16em;
+  font-family: var(--font-tech);
+  font-weight: 600;
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--text-mid);
   text-decoration: none;
@@ -420,7 +441,7 @@ footer {
    (overflow-x is hidden, so any nav overflow silently clips the page edge). */
 @media (max-width: 560px) {
   .nav-logo {
-    font-size: 1.3rem;
+    font-size: 0.95rem;
     gap: 8px;
   }
   .nav-logo .logo-mark {
@@ -428,7 +449,7 @@ footer {
   }
   .btn-nav {
     padding: 0 12px;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
   }
 }
 

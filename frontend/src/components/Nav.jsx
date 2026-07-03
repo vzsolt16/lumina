@@ -13,10 +13,10 @@ export default function Nav({ showSectionLinks = true }) {
   }
 
   return (
-    <nav>
+    <nav className="app-nav">
       <Link to="/" className="nav-logo">
-        LUMINA
-        <span className="logo-mark">Study Systems</span>
+        lumina
+        <span className="logo-mark">study sessions</span>
       </Link>
       {showSectionLinks && (
         <ul className="nav-links">
@@ -38,10 +38,10 @@ export default function Nav({ showSectionLinks = true }) {
         ) : (
           <>
             <button className="btn-nav ghost" onClick={() => navigate('/login')}>
-              Log in
+              Sign in
             </button>
             <button className="btn-nav solid" onClick={() => navigate('/register')}>
-              Access free
+              Press play
             </button>
           </>
         )}
