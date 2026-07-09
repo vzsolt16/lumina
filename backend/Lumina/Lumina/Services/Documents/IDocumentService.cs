@@ -17,6 +17,12 @@ public interface IDocumentService
 
     Task<bool> DeleteAsync(Guid id, Guid userId);
 
+    /// <summary>Update a document's file name and/or content. Only non-null fields
+    /// on <paramref name="request"/> are applied. Returns null if the document is
+    /// missing/not owned. Throws <see cref="InvalidOperationException"/> on invalid
+    /// input (e.g. a blank name or oversized content).</summary>
+    Task<DocumentDetailResponse?> UpdateAsync(Guid id, UpdateDocumentRequest request, Guid userId);
+
     /// <summary>Move a document to a folder (null = root). Returns false if the
     /// document is missing/not owned. Throws <see cref="InvalidOperationException"/>
     /// if <paramref name="folderId"/> is set but missing/not owned.</summary>

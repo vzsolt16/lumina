@@ -10,5 +10,7 @@ public class DocumentDetailResponse
 
     public DateTime UploadedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public string Content { get; set; } = "";
 }

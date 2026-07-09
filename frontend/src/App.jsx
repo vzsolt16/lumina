@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute.jsx'
 import Landing from './pages/Landing.jsx'
 import Studio from './pages/Studio.jsx'
 import StudioDocument from './pages/StudioDocument.jsx'
+import ContentTab from './pages/document/ContentTab.jsx'
 import FlashcardsTab from './pages/document/FlashcardsTab.jsx'
 import QuizTab from './pages/document/QuizTab.jsx'
 import ChatTab from './pages/document/ChatTab.jsx'
@@ -41,6 +42,7 @@ export default function App() {
             }
           >
             <Route index element={<Navigate to="flashcards" replace />} />
+            <Route path="content" element={<ContentTab />} />
             <Route path="flashcards" element={<FlashcardsTab />} />
             <Route path="quiz" element={<QuizTab />} />
             <Route path="chat" element={<ChatTab />} />

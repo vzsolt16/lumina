@@ -102,6 +102,26 @@ public class DocumentsController : ControllerBase
         }
     }
 
+    [HttpPatch("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, UpdateDocumentRequest request)
+    {
+        try
+        {
+            var updated = await _documentService.UpdateAsync(id, request, User.GetUserId());
+
+            if (updated is null)
+            {
+                return NotFound();
+            }
+
+            return Ok(updated);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {

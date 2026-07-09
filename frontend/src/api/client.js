@@ -144,6 +144,21 @@ export function deleteDocument(id) {
 }
 
 /**
+ * Update a document's title and/or content. Send only the fields you want to
+ * change — `{ fileName }` for a rename, `{ fileName, content }` for a full edit.
+ * @param {string} id
+ * @param {{ fileName?: string, content?: string }} payload
+ * @returns {Promise<{ id, fileName, fileSize, uploadedAt, updatedAt, content }>}
+ */
+export function updateDocument(id, payload) {
+  return request(`/api/documents/${id}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(payload),
+  })
+}
+
+/**
  * Move a document into a folder, or to the root with folderId = null.
  * @param {string} id
  * @param {string|null} folderId

@@ -16,6 +16,7 @@ import {
   getFolders,
   uploadDocument,
   deleteDocument,
+  updateDocument,
   moveDocument,
   createFolder,
   renameFolder,
@@ -321,10 +322,13 @@ function FolderCard({
 }
 
 // ── DOCUMENT CARD ──────────────────────────────────────────────────────
-function DocCard({ doc, onDeleted, onDragStart, onDragEnd }) {
+function DocCard({ doc, onDeleted, onRename, onDragStart, onDragEnd }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(doc.fileName)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const wrapRef = useRef(null)
 
@@ -339,6 +343,26 @@ function DocCard({ doc, onDeleted, onDragStart, onDragEnd }) {
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [menuOpen])
+
+  async function submitRename() {
+    const trimmed = name.trim()
+    if (!trimmed || trimmed === doc.fileName) {
+      setEditing(false)
+      setName(doc.fileName)
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      await onRename(doc.id, trimmed)
+      setEditing(false)
+    } catch (err) {
+      setError(err?.message || 'Rename failed.')
+      setName(doc.fileName)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function handleDelete() {
     setDeleting(true)
@@ -357,21 +381,46 @@ function DocCard({ doc, onDeleted, onDragStart, onDragEnd }) {
     <div
       className="doc-card-wrap"
       ref={wrapRef}
-      draggable
-      onDragStart={(e) =>
+      draggable={!editing}
+      onDragStart={(e) => {
+        if (editing) return
         onDragStart(e, { kind: 'doc', id: doc.id, parentId: doc.folderId ?? null })
-      }
+      }}
       onDragEnd={onDragEnd}
     >
-      <Link to={`/studio/${doc.id}`} className="doc-card" draggable={false}>
-        <span className="doc-card-icon">
-          <FileIcon size={20} />
-        </span>
-        <div className="doc-card-body">
-          <div className="doc-file">{doc.fileName}</div>
-          <div className="doc-id">UPLOADED: {formatDate(doc.uploadedAt)}</div>
+      {editing ? (
+        <div className="doc-card doc-card-edit">
+          <span className="doc-card-icon">
+            <FileIcon size={20} />
+          </span>
+          <input
+            className="folder-rename-input"
+            value={name}
+            autoFocus
+            disabled={busy}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitRename()
+              if (e.key === 'Escape') {
+                setEditing(false)
+                setName(doc.fileName)
+              }
+            }}
+            onBlur={submitRename}
+            aria-label="Document title"
+          />
         </div>
-      </Link>
+      ) : (
+        <Link to={`/studio/${doc.id}`} className="doc-card" draggable={false}>
+          <span className="doc-card-icon">
+            <FileIcon size={20} />
+          </span>
+          <div className="doc-card-body">
+            <div className="doc-file">{doc.fileName}</div>
+            <div className="doc-id">UPLOADED: {formatDate(doc.uploadedAt)}</div>
+          </div>
+        </Link>
+      )}
 
       <button
         type="button"
@@ -413,15 +462,30 @@ function DocCard({ doc, onDeleted, onDragStart, onDragEnd }) {
               </div>
             </div>
           ) : (
-            <button
-              type="button"
-              className="doc-menu-item danger"
-              role="menuitem"
-              onClick={() => setConfirming(true)}
-            >
-              <TrashIcon size={15} />
-              <span>Delete</span>
-            </button>
+            <>
+              <button
+                type="button"
+                className="doc-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setName(doc.fileName)
+                  setEditing(true)
+                  setMenuOpen(false)
+                }}
+              >
+                <PencilIcon size={15} />
+                <span>Rename</span>
+              </button>
+              <button
+                type="button"
+                className="doc-menu-item danger"
+                role="menuitem"
+                onClick={() => setConfirming(true)}
+              >
+                <TrashIcon size={15} />
+                <span>Delete</span>
+              </button>
+            </>
           )}
           {error && <div className="error-line">// ERROR: {error}</div>}
         </div>
@@ -540,6 +604,15 @@ export default function Studio() {
   async function handleRenameFolder(id, name) {
     const updated = await renameFolder(id, name)
     setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)))
+  }
+
+  async function handleRenameDoc(id, fileName) {
+    const updated = await updateDocument(id, { fileName })
+    setDocs((prev) =>
+      prev.map((d) =>
+        d.id === id ? { ...d, fileName: updated.fileName, updatedAt: updated.updatedAt } : d,
+      ),
+    )
   }
 
   async function handleDeleteFolder(id) {
@@ -721,6 +794,7 @@ export default function Studio() {
                     key={d.id}
                     doc={d}
                     onDeleted={(id) => setDocs((prev) => prev.filter((x) => x.id !== id))}
+                    onRename={handleRenameDoc}
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                   />

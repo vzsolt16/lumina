@@ -506,6 +506,76 @@
   border-bottom: 1px solid transparent;
 }
 
+/* ── DOCUMENT CONTENT (view / edit) ───────────────── */
+.doc-card-edit {
+  cursor: default;
+}
+
+.doc-content-view {
+  margin: 0;
+  max-height: 60vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-tech);
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--text-mid);
+}
+
+.doc-edit-note {
+  font-family: var(--font-tech);
+  font-weight: 600;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: var(--seafoam-text);
+  line-height: 1.7;
+  margin-bottom: 18px;
+}
+
+.doc-edit-label {
+  display: block;
+  font-family: var(--font-tech);
+  font-weight: 600;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  margin-bottom: 8px;
+}
+
+.doc-title-input {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border-t);
+  background: rgba(6, 34, 46, 0.6);
+  font-family: var(--font-tech);
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: var(--text-dark);
+}
+
+.doc-content-input {
+  width: 100%;
+  min-height: 40vh;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid var(--border-t);
+  background: rgba(6, 34, 46, 0.6);
+  font-family: var(--font-tech);
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--text-dark);
+}
+
+.doc-title-input:focus,
+.doc-content-input:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
 /* ── ACTIONS ──────────────────────────────────────── */
 .studio-actions {
   display: flex;

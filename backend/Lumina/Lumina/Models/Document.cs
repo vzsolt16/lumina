@@ -25,6 +25,9 @@ public class Document
 
     public DateTime UploadedAt { get; set; }
 
+    // Null until the document's title or content is first edited.
+    public DateTime? UpdatedAt { get; set; }
+
     public ICollection<Flashcard> Flashcards { get; set; } = [];
 
     public ICollection<Quiz> Quizzes { get; set; } = [];

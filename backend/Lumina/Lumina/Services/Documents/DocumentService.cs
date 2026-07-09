@@ -1,3 +1,4 @@
+using System.Text;
 using Lumina.Data;
 using Lumina.DTOs;
 using Lumina.DTOs.Document;
@@ -55,6 +56,7 @@ public class DocumentService : IDocumentService
                 FileName = d.FileName,
                 FileSize = d.FileSize,
                 UploadedAt = d.UploadedAt,
+                UpdatedAt = d.UpdatedAt,
                 Content = d.Content
             })
             .FirstOrDefaultAsync();
@@ -78,6 +80,56 @@ public class DocumentService : IDocumentService
         return true;
     }
 
+    public async Task<DocumentDetailResponse?> UpdateAsync(Guid id, UpdateDocumentRequest request, Guid userId)
+    {
+        var document = await _db.Documents
+            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+
+        if (document is null)
+        {
+            return null;
+        }
+
+        if (request.FileName is not null)
+        {
+            var name = request.FileName.Trim();
+            if (name.Length == 0)
+            {
+                throw new InvalidOperationException("File name cannot be empty.");
+            }
+            if (name.Length > 255)
+            {
+                throw new InvalidOperationException("File name is too long (max 255 characters).");
+            }
+            document.FileName = name;
+        }
+
+        if (request.Content is not null)
+        {
+            const long MaxContentSize = 2 * 1024 * 1024; // mirror the 2 MB upload cap
+            var size = Encoding.UTF8.GetByteCount(request.Content);
+            if (size > MaxContentSize)
+            {
+                throw new InvalidOperationException("Content too large (max 2 MB).");
+            }
+            document.Content = request.Content;
+            document.FileSize = size;
+        }
+
+        document.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return new DocumentDetailResponse
+        {
+            Id = document.Id,
+            FileName = document.FileName,
+            FileSize = document.FileSize,
+            UploadedAt = document.UploadedAt,
+            UpdatedAt = document.UpdatedAt,
+            Content = document.Content
+        };
+    }
+
     public async Task<List<DocumentSummaryResponse>> GetAllAsync(Guid userId)
     {
         return await _db.Documents
@@ -88,7 +140,8 @@ public class DocumentService : IDocumentService
                 Id = d.Id,
                 FileName = d.FileName,
                 FolderId = d.FolderId,
-                UploadedAt = d.UploadedAt
+                UploadedAt = d.UploadedAt,
+                UpdatedAt = d.UpdatedAt
             })
             .ToListAsync();
     }

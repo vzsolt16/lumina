@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { useParams, NavLink, Link, Outlet } from 'react-router-dom'
 import Nav from '../components/Nav.jsx'
 import Footer from '../components/Footer.jsx'
-import { FlashcardsIcon, QuizIcon, ChatIcon, FileIcon } from '../components/icons.jsx'
+import { FlashcardsIcon, QuizIcon, ChatIcon, FileIcon, NotesIcon } from '../components/icons.jsx'
 import { useDocumentJobs } from '../context/JobsContext.jsx'
 import { getDocument } from '../api/client.js'
 import './Studio.css'
 
 const TABS = [
+  { to: 'content', label: 'Content', Icon: NotesIcon },
   { to: 'flashcards', label: 'Flashcards', Icon: FlashcardsIcon },
   { to: 'quiz', label: 'Quiz', Icon: QuizIcon },
   { to: 'chat', label: 'Chat', Icon: ChatIcon },
@@ -73,7 +74,7 @@ export default function StudioDocument() {
         </div>
 
         <div className="doc-tab-body">
-          <Outlet context={{ flashcard, quiz }} />
+          <Outlet context={{ flashcard, quiz, doc, onDocUpdated: setDoc }} />
         </div>
       </div>
 
