@@ -1220,6 +1220,64 @@
   font-weight: 600;
 }
 
+/* AI edit proposal: a diff card inside an assistant message — the passage to
+   remove (error tint) over its replacement (seafoam), with apply/reject. */
+.chat-proposal {
+  margin-top: 12px;
+  border: 1px solid var(--border-t);
+  background: rgba(6, 34, 46, 0.35);
+}
+
+.chat-proposal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-t);
+  font-family: var(--font-tech);
+  font-weight: 600;
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: var(--text-light);
+}
+
+.chat-proposal-status.pending { color: var(--teal-text); }
+.chat-proposal-status.applied { color: var(--seafoam-text); }
+.chat-proposal-status.rejected { color: var(--error-text); }
+
+.chat-proposal-block {
+  margin: 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-tech);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.chat-proposal-block.del {
+  color: var(--error-text);
+  background: rgba(232, 131, 111, 0.07);
+  border-left: 2px solid var(--error);
+}
+
+.chat-proposal-block.add {
+  color: var(--seafoam-text);
+  background: rgba(90, 202, 174, 0.07);
+  border-left: 2px solid var(--seafoam);
+}
+
+.chat-proposal-block.del + .chat-proposal-block.add {
+  border-top: 1px solid var(--border-t);
+}
+
+.chat-proposal-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-t);
+}
+
 /* Blinking block caret trailing the answer while it streams. */
 .chat-caret {
   display: inline-block;

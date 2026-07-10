@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Lumina.Data;
+using Lumina.DTOs.Chat;
 using Lumina.Extensions;
 using Lumina.Services.Chat;
 using Microsoft.AspNetCore.Authorization;
@@ -21,9 +22,10 @@ public class ChatHub : Hub
     }
 
     // Server-to-client streaming: the client invokes this with `connection.stream`
-    // and receives the answer token-by-token. SignalR supplies the
+    // and receives typed events — "token" fragments of the answer plus an optional
+    // trailing "proposal" (an AI-suggested document edit). SignalR supplies the
     // CancellationToken and cancels it if the client unsubscribes or disconnects.
-    public async IAsyncEnumerable<string> StreamAnswer(
+    public async IAsyncEnumerable<ChatStreamEvent> StreamAnswer(
         Guid conversationId,
         string question,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -52,10 +54,10 @@ public class ChatHub : Hub
             throw new HubException("Conversation not found.");
         }
 
-        await foreach (var token in _chatService
+        await foreach (var evt in _chatService
             .StreamAnswerAsync(conversationId, userId, question, cancellationToken))
         {
-            yield return token;
+            yield return evt;
         }
     }
 }

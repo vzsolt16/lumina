@@ -57,7 +57,7 @@ public class ChatController : ControllerBase
     {
         try
         {
-            var messages = await _chatService.GetMessagesAsync(conversationId, User.GetUserId());
+            var messages = await _chatService.GetMessagesAsync(documentId, conversationId, User.GetUserId());
             return Ok(messages);
         }
         catch (KeyNotFoundException)
@@ -71,12 +71,51 @@ public class ChatController : ControllerBase
     {
         try
         {
-            await _chatService.DeleteConversationAsync(conversationId, User.GetUserId());
+            await _chatService.DeleteConversationAsync(documentId, conversationId, User.GetUserId());
             return NoContent();
         }
         catch (KeyNotFoundException)
         {
             return NotFound();
+        }
+    }
+
+    // Applies an AI edit proposal to the document and returns the updated
+    // document, so the client can refresh its copy of the content.
+    [HttpPost("{conversationId:guid}/messages/{messageId:guid}/proposal/apply")]
+    public async Task<IActionResult> ApplyProposal(Guid documentId, Guid conversationId, Guid messageId)
+    {
+        try
+        {
+            var document = await _chatService.ApplyProposalAsync(documentId, conversationId, messageId, User.GetUserId());
+            return Ok(document);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Already resolved, or the document changed under the proposal.
+            return Conflict(ex.Message);
+        }
+    }
+
+    [HttpPost("{conversationId:guid}/messages/{messageId:guid}/proposal/reject")]
+    public async Task<IActionResult> RejectProposal(Guid documentId, Guid conversationId, Guid messageId)
+    {
+        try
+        {
+            await _chatService.RejectProposalAsync(documentId, conversationId, messageId, User.GetUserId());
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ex.Message);
         }
     }
 }

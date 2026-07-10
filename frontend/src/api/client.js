@@ -290,3 +290,23 @@ export function deleteConversation(documentId, conversationId) {
     { method: 'DELETE' },
   )
 }
+
+/**
+ * Apply a pending AI edit proposal to the document.
+ * 409 = already resolved, or the document changed under the proposal.
+ * @returns {Promise<{ id, fileName, fileSize, uploadedAt, updatedAt, content }>} the updated document
+ */
+export function applyEditProposal(documentId, conversationId, messageId) {
+  return request(
+    `/api/documents/${documentId}/chat/conversations/${conversationId}/messages/${messageId}/proposal/apply`,
+    { method: 'POST' },
+  )
+}
+
+/** Reject a pending AI edit proposal (leaves the document untouched). */
+export function rejectEditProposal(documentId, conversationId, messageId) {
+  return request(
+    `/api/documents/${documentId}/chat/conversations/${conversationId}/messages/${messageId}/proposal/reject`,
+    { method: 'POST' },
+  )
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useOutletContext } from 'react-router-dom'
 import { HubConnectionBuilder, HttpTransportType } from '@microsoft/signalr'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -8,6 +8,8 @@ import {
   createConversation,
   getConversationMessages,
   deleteConversation,
+  applyEditProposal,
+  rejectEditProposal,
 } from '../../api/client.js'
 import { getAccessToken } from '../../api/authToken.js'
 import { PlusIcon, TrashIcon } from '../../components/icons.jsx'
@@ -40,10 +42,13 @@ function formatTime(iso) {
 
 export default function ChatTab() {
   const { docId } = useParams()
+  // Applying an AI edit changes the document; bubble the updated doc up so the
+  // Content tab and header see the new text without a refetch.
+  const { onDocUpdated } = useOutletContext()
 
   const [conversations, setConversations] = useState([])
   const [activeId, setActiveId] = useState(null)
-  const [messages, setMessages] = useState([]) // { role, content }[]
+  const [messages, setMessages] = useState([]) // { role, content, proposal? }[]
 
   const [loadingConvos, setLoadingConvos] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -54,6 +59,8 @@ export default function ChatTab() {
 
   const [confirmingId, setConfirmingId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
+  // messageId of the proposal being applied/rejected right now.
+  const [proposalBusyId, setProposalBusyId] = useState(null)
 
   const connectionRef = useRef(null)
   const subscriptionRef = useRef(null)
@@ -68,7 +75,13 @@ export default function ChatTab() {
     try {
       const msgs = await getConversationMessages(docId, conversationId)
       if (loadSeqRef.current === seq) {
-        setMessages((msgs || []).map((m) => ({ role: m.role, content: m.content })))
+        setMessages(
+          (msgs || []).map((m) => ({
+            role: m.role,
+            content: m.content,
+            proposal: m.proposal || null,
+          })),
+        )
       }
     } catch {
       if (loadSeqRef.current === seq) setError('Could not load this conversation.')
@@ -239,19 +252,27 @@ export default function ChatTab() {
     }
 
     let draft = ''
-    const setAnswer = (content) =>
+    // Merge instead of replace so a proposal already attached to the message
+    // survives later updates.
+    const patchAnswer = (patch) =>
       setMessages((prev) => {
         const next = prev.slice()
-        next[next.length - 1] = { role: 'assistant', content }
+        next[next.length - 1] = { ...next[next.length - 1], ...patch }
         return next
       })
 
     subscriptionRef.current = connectionRef.current
       .stream('StreamAnswer', convoId, question)
       .subscribe({
-        next: (token) => {
-          draft += token
-          setAnswer(draft)
+        next: (evt) => {
+          // The stream carries typed events: token fragments of the reply, plus
+          // at most one trailing edit proposal.
+          if (evt?.type === 'token' && evt.text) {
+            draft += evt.text
+            patchAnswer({ content: draft })
+          } else if (evt?.type === 'proposal' && evt.proposal) {
+            patchAnswer({ proposal: evt.proposal })
+          }
         },
         complete: () => {
           setStreaming(false)
@@ -271,6 +292,33 @@ export default function ChatTab() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send(e)
+    }
+  }
+
+  async function resolveProposal(proposal, action) {
+    const { messageId } = proposal
+    setProposalBusyId(messageId)
+    setError('')
+    try {
+      if (action === 'apply') {
+        const updated = await applyEditProposal(docId, activeId, messageId)
+        onDocUpdated(updated)
+      } else {
+        await rejectEditProposal(docId, activeId, messageId)
+      }
+      const status = action === 'apply' ? 'applied' : 'rejected'
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.proposal?.messageId === messageId
+            ? { ...m, proposal: { ...m.proposal, status } }
+            : m,
+        ),
+      )
+    } catch (err) {
+      // 409 = already resolved, or the document changed under the proposal.
+      setError(err?.message || 'Could not update the proposal.')
+    } finally {
+      setProposalBusyId(null)
     }
   }
 
@@ -399,6 +447,44 @@ export default function ChatTab() {
                       </ReactMarkdown>
                       {!isUser && isLast && streaming && <span className="chat-caret" />}
                     </div>
+                    {!isUser && m.proposal && (
+                      <div className="chat-proposal">
+                        <div className="chat-proposal-head">
+                          <span>// PROPOSED_EDIT</span>
+                          <span className={`chat-proposal-status ${m.proposal.status}`}>
+                            {m.proposal.status.toUpperCase()}
+                          </span>
+                        </div>
+                        {m.proposal.target && (
+                          <pre className="chat-proposal-block del">{m.proposal.target}</pre>
+                        )}
+                        {m.proposal.replacement && (
+                          <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                        )}
+                        {m.proposal.status === 'pending' && (
+                          <div className="chat-proposal-actions">
+                            <button
+                              type="button"
+                              className="btn primary"
+                              onClick={() => resolveProposal(m.proposal, 'apply')}
+                              disabled={proposalBusyId !== null || streaming}
+                            >
+                              {proposalBusyId === m.proposal.messageId
+                                ? 'Applying…'
+                                : 'Apply'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn ghost"
+                              onClick={() => resolveProposal(m.proposal, 'reject')}
+                              disabled={proposalBusyId !== null || streaming}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })
