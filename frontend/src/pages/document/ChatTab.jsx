@@ -261,17 +261,62 @@ export default function ChatTab() {
         return next
       })
 
+    // Track tool-call progress on the in-progress message: show the activity when
+    // the tool starts, drop it when done. Tools like rename finish near-instantly,
+    // so keep the line up for a minimum window — otherwise it just flickers.
+    const MIN_ACTIVITY_MS = 1200
+    let activitySeq = 0
+    const runningStart = new Map() // toolName -> { id, startedAt }
+
+    const addActivity = (id, label) =>
+      setMessages((prev) => {
+        const next = prev.slice()
+        const last = next[next.length - 1]
+        const activities = last.activities ? [...last.activities, { id, label }] : [{ id, label }]
+        next[next.length - 1] = { ...last, activities }
+        return next
+      })
+
+    const removeActivity = (id) =>
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.activities?.some((a) => a.id === id)
+            ? { ...m, activities: m.activities.filter((a) => a.id !== id) }
+            : m,
+        ),
+      )
+
+    const upsertActivity = (name, label, status) => {
+      if (status === 'running') {
+        const id = ++activitySeq
+        runningStart.set(name, { id, startedAt: Date.now() })
+        addActivity(id, label)
+      } else {
+        const entry = runningStart.get(name)
+        if (!entry) return
+        runningStart.delete(name)
+        const wait = Math.max(0, MIN_ACTIVITY_MS - (Date.now() - entry.startedAt))
+        if (wait === 0) removeActivity(entry.id)
+        else setTimeout(() => removeActivity(entry.id), wait)
+      }
+    }
+
     subscriptionRef.current = connectionRef.current
       .stream('StreamAnswer', convoId, question)
       .subscribe({
         next: (evt) => {
-          // The stream carries typed events: token fragments of the reply, plus
-          // at most one trailing edit proposal.
+          // The stream carries typed events: token fragments of the reply, an
+          // optional trailing edit proposal, and a document update when a tool
+          // (e.g. rename) changed the document mid-answer.
           if (evt?.type === 'token' && evt.text) {
             draft += evt.text
             patchAnswer({ content: draft })
           } else if (evt?.type === 'proposal' && evt.proposal) {
             patchAnswer({ proposal: evt.proposal })
+          } else if (evt?.type === 'document' && evt.document) {
+            onDocUpdated(evt.document)
+          } else if (evt?.type === 'tool' && evt.toolName) {
+            upsertActivity(evt.toolName, evt.toolLabel, evt.toolStatus)
           }
         },
         complete: () => {
@@ -441,6 +486,16 @@ export default function ChatTab() {
                     className={`chat-msg ${isUser ? 'user' : 'assistant'}`}
                   >
                     <div className="chat-msg-label">{isUser ? '// YOU' : '// LUMINA'}</div>
+                    {!isUser && m.activities && m.activities.length > 0 && (
+                      <div className="chat-activities">
+                        {m.activities.map((a) => (
+                          <div key={a.id} className="chat-activity">
+                            <span className="chat-activity-mark" />
+                            <span>{a.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="chat-msg-text">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {m.content}

@@ -1119,6 +1119,33 @@
   color: var(--seafoam);
 }
 
+/* Tool-call progress lines (e.g. "Renaming document…"), shown above the reply
+   only while the model runs a tool — removed once it's done. */
+.chat-activities {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.chat-activity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-tech);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: var(--seafoam-text);
+}
+
+.chat-activity-mark {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--seafoam);
+  animation: pulse 1s steps(2, start) infinite;
+}
+
 .chat-msg-text {
   font-family: var(--font-tech);
   font-size: 0.9rem;

@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using Lumina.Data;
 using Lumina.DTOs.Chat;
 using Lumina.DTOs.Document;
@@ -146,6 +147,7 @@ public class ChatService : IChatService
         string question,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        Guid documentId;
         string fileName;
         string content;
         bool isFirstMessage;
@@ -166,6 +168,7 @@ public class ChatService : IChatService
                 throw new KeyNotFoundException("Conversation not found.");
             }
 
+            documentId = conversation.Document.Id;
             fileName = conversation.Document.FileName;
             content = conversation.Document.Content;
 
@@ -177,7 +180,8 @@ public class ChatService : IChatService
             isFirstMessage = history.Count == 0;
         }
 
-        var prompt = BuildPrompt(fileName, content, history, question);
+        var messages = BuildMessages(fileName, content, history, question);
+        var tools = new List<AiTool> { RenameDocumentTool };
 
         var askedAt = DateTime.UtcNow;
         // Generated up front so the proposal event streamed to the client refers
@@ -192,34 +196,95 @@ public class ChatService : IChatService
         string? proposalReplacement = null;
         var completed = false;
         var seenContent = false;
+        // Set once a tool mutates the document, so we can still show a confirmation
+        // if the model exhausts the turn cap without producing any visible reply.
+        var toolMutatedDoc = false;
 
         try
         {
-            // Headroom for the model's chain of thought plus the answer, so a
-            // normal turn isn't cut off mid-stream (qwen3 reasons before replying).
-            await foreach (var token in _aiService
-                .GenerateStreamAsync(prompt, maxTokens: 4000, cancellationToken: cancellationToken))
+            // The model may take several turns: call a tool, get the result, then
+            // produce its final answer. Loop until a turn makes no tool calls (the
+            // visible answer). The cap is a backstop against a model that never
+            // stops calling tools.
+            const int maxTurns = 3;
+            for (var turn = 0; turn < maxTurns; turn++)
             {
-                var chunk = filter.Push(token);
-                if (chunk.Length == 0)
-                {
-                    continue;
-                }
+                var toolCalls = new List<AiToolCall>();
+                // The raw content of this turn, kept so the assistant tool-call
+                // message we send back mirrors what the model actually produced.
+                var rawTurnText = new StringBuilder();
 
-                // Skip the leading whitespace the model emits after its (stripped)
-                // think block, so the answer doesn't start with blank lines.
-                if (!seenContent)
+                // Headroom for the model's answer so a normal turn isn't cut off
+                // mid-stream.
+                await foreach (var delta in _aiService
+                    .ChatStreamAsync(messages, tools, maxTokens: 4000, cancellationToken: cancellationToken))
                 {
-                    chunk = chunk.TrimStart();
+                    if (delta.ToolCalls is { Count: > 0 } calls)
+                    {
+                        toolCalls.AddRange(calls);
+                    }
+
+                    if (delta.Content is not { Length: > 0 } token)
+                    {
+                        continue;
+                    }
+
+                    rawTurnText.Append(token);
+
+                    var chunk = filter.Push(token);
                     if (chunk.Length == 0)
                     {
                         continue;
                     }
-                    seenContent = true;
+
+                    // Skip the leading whitespace the model emits before its first
+                    // real content, so the answer doesn't start with blank lines.
+                    if (!seenContent)
+                    {
+                        chunk = chunk.TrimStart();
+                        if (chunk.Length == 0)
+                        {
+                            continue;
+                        }
+                        seenContent = true;
+                    }
+
+                    visible.Append(chunk);
+                    yield return ChatStreamEvent.ForToken(chunk);
                 }
 
-                visible.Append(chunk);
-                yield return ChatStreamEvent.ForToken(chunk);
+                // No tool calls → this turn was the visible answer; stop looping.
+                if (toolCalls.Count == 0)
+                {
+                    break;
+                }
+
+                // The model asked to use tools. Record its request, run each tool,
+                // and feed the results back so the next turn can answer with them.
+                messages.Add(new AiMessage("assistant", rawTurnText.ToString(), ToolCalls: toolCalls));
+
+                foreach (var call in toolCalls)
+                {
+                    // Surface the tool call so the UI can show progress (e.g.
+                    // "Renaming document…") during the pause before the reply.
+                    var label = ToolActivityLabel(call);
+                    yield return ChatStreamEvent.ForTool(call.Name, label, ChatStreamEvent.ToolRunning);
+
+                    var (resultText, updatedDoc) = await ExecuteToolAsync(
+                        call, documentId, userId, cancellationToken);
+
+                    messages.Add(new AiMessage("tool", resultText, ToolName: call.Name));
+
+                    yield return ChatStreamEvent.ForTool(call.Name, label, ChatStreamEvent.ToolDone);
+
+                    // A tool that changed the document (e.g. rename) is applied
+                    // immediately; tell the client so the header/Content tab refresh.
+                    if (updatedDoc is not null)
+                    {
+                        toolMutatedDoc = true;
+                        yield return ChatStreamEvent.ForDocument(updatedDoc);
+                    }
+                }
             }
 
             var (remainder, proposal) = filter.Finish();
@@ -273,6 +338,15 @@ public class ChatService : IChatService
                     visible.Append(note);
                     yield return ChatStreamEvent.ForToken(note);
                 }
+            }
+
+            // A tool changed the document but the model gave no words (e.g. it hit
+            // the turn cap): don't leave an empty reply bubble.
+            if (visible.Length == 0 && toolMutatedDoc && proposalTarget is null)
+            {
+                const string fallback = "Done — I made the change.";
+                visible.Append(fallback);
+                yield return ChatStreamEvent.ForToken(fallback);
             }
 
             completed = true;
@@ -459,9 +533,110 @@ public class ChatService : IChatService
         return firstLine[..maxLength].TrimEnd() + "…";
     }
 
+    // Tools the model may call from chat. Kept minimal on purpose — one action,
+    // end to end. The description/schema is how the model learns the tool exists.
+    private static readonly AiTool RenameDocumentTool = new(
+        "rename_document",
+        "Rename the current document. Use only when the user explicitly asks to rename or "
+        + "retitle it. Provide the complete new name.",
+        JsonSerializer.SerializeToElement(new
+        {
+            type = "object",
+            properties = new
+            {
+                new_name = new
+                {
+                    type = "string",
+                    description = "The new document name."
+                }
+            },
+            required = new[] { "new_name" }
+        }));
+
+    // A short human label for a tool call, shown to the user while the tool runs.
+    private static string ToolActivityLabel(AiToolCall call)
+    {
+        switch (call.Name)
+        {
+            case "rename_document":
+                if (call.Arguments.ValueKind == JsonValueKind.Object
+                    && call.Arguments.TryGetProperty("new_name", out var name)
+                    && name.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(name.GetString()))
+                {
+                    return $"Renaming document to “{name.GetString()!.Trim()}”";
+                }
+                return "Renaming document";
+
+            default:
+                return "Working";
+        }
+    }
+
+    // Runs a tool the model called. Returns the text fed back to the model and the
+    // updated document if the tool changed it. Bad arguments / unknown tools come
+    // back as an error string the model can recover from — this never throws.
+    private async Task<(string ResultText, DocumentDetailResponse? UpdatedDoc)> ExecuteToolAsync(
+        AiToolCall call, Guid documentId, Guid userId, CancellationToken cancellationToken)
+    {
+        switch (call.Name)
+        {
+            case "rename_document":
+                // Guard ValueKind first: TryGetProperty throws if Arguments isn't a
+                // JSON object (e.g. the model emits a call with no arguments at all,
+                // leaving a default/Undefined element).
+                if (call.Arguments.ValueKind != JsonValueKind.Object
+                    || !call.Arguments.TryGetProperty("new_name", out var nameElement)
+                    || nameElement.ValueKind != JsonValueKind.String)
+                {
+                    return ("Error: the new_name argument was missing.", null);
+                }
+
+                // Mirror the validation in DocumentService.UpdateAsync.
+                var newName = nameElement.GetString()!.Trim();
+                if (newName.Length == 0)
+                {
+                    return ("Error: the name cannot be empty.", null);
+                }
+                if (newName.Length > 255)
+                {
+                    return ("Error: the name is too long (max 255 characters).", null);
+                }
+
+                using (var scope = _scopeFactory.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+
+                    var document = await db.Documents
+                        .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken);
+                    if (document is null)
+                    {
+                        return ("Error: the document no longer exists.", null);
+                    }
+
+                    document.FileName = newName;
+                    document.UpdatedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync(cancellationToken);
+
+                    return ($"Done — the document is now named \"{newName}\".", new DocumentDetailResponse
+                    {
+                        Id = document.Id,
+                        FileName = document.FileName,
+                        FileSize = document.FileSize,
+                        UploadedAt = document.UploadedAt,
+                        UpdatedAt = document.UpdatedAt,
+                        Content = document.Content
+                    });
+                }
+
+            default:
+                return ($"Error: unknown tool '{call.Name}'.", null);
+        }
+    }
+
     // The document is injected wholesale for now ("start simple"). When RAG lands,
     // only this method changes: swap the document content for the retrieved chunks.
-    private static string BuildPrompt(
+    private static List<AiMessage> BuildMessages(
         string fileName,
         string content,
         List<ChatMessage> history,
@@ -523,25 +698,29 @@ public class ChatService : IChatService
             "- For ordinary questions, or if the user hasn't clearly asked for a change, just " +
             "answer normally without this block.");
         sb.AppendLine();
+        sb.AppendLine(
+            "You also have tools you can call. When the user explicitly asks for an action a tool " +
+            "covers — for example renaming this document — call the tool instead of describing the " +
+            "steps. Renaming is applied immediately, so afterwards just confirm it briefly. Use the " +
+            "edit-proposal block above only for changes to the document's content, not its name.");
+        sb.AppendLine();
         sb.AppendLine($"--- DOCUMENT: {fileName} ---");
         sb.AppendLine(content);
         sb.AppendLine("--- END DOCUMENT ---");
-        sb.AppendLine();
 
-        if (history.Count > 0)
+        var messages = new List<AiMessage>
         {
-            sb.AppendLine("Conversation so far:");
-            foreach (var message in history)
-            {
-                var speaker = message.Role == "assistant" ? "Assistant" : "User";
-                sb.AppendLine($"{speaker}: {message.Content}");
-            }
-            sb.AppendLine();
+            new("system", sb.ToString())
+        };
+
+        foreach (var message in history)
+        {
+            var role = message.Role == "assistant" ? "assistant" : "user";
+            messages.Add(new AiMessage(role, message.Content));
         }
 
-        sb.AppendLine($"User: {question}");
-        sb.Append("Assistant:");
+        messages.Add(new AiMessage("user", question));
 
-        return sb.ToString();
+        return messages;
     }
 }

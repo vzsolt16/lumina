@@ -136,4 +136,109 @@ public class OllamaService : IAiService
             }
         }
     }
+
+    public async IAsyncEnumerable<AiChatDelta> ChatStreamAsync(
+        IReadOnlyList<AiMessage> messages,
+        IReadOnlyList<AiTool> tools,
+        int maxTokens = 4000,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var request = new OllamaChatRequest
+        {
+            Model = _model,
+            Stream = true,
+            Think = false,
+            Messages = messages.Select(ToOllama).ToList(),
+            Tools = tools.Count == 0
+                ? null
+                : tools.Select(t => new OllamaTool
+                {
+                    Function = new OllamaFunction
+                    {
+                        Name = t.Name,
+                        Description = t.Description,
+                        Parameters = t.Parameters
+                    }
+                }).ToList(),
+            Options = new OllamaOptions
+            {
+                NumPredict = maxTokens
+            }
+        };
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/chat")
+        {
+            Content = JsonContent.Create(request)
+        };
+
+        using var response = await _httpClient.SendAsync(
+            httpRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(stream);
+
+        // Like /api/generate, /api/chat streams newline-delimited JSON — one object
+        // per line — but each carries a `message` (content fragment and/or the
+        // assembled tool_calls) rather than a flat `response` string.
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            OllamaChatResponse? chunk;
+            try
+            {
+                chunk = JsonSerializer.Deserialize<OllamaChatResponse>(line);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            if (chunk?.Message is null)
+            {
+                if (chunk?.Done == true)
+                {
+                    break;
+                }
+                continue;
+            }
+
+            var content = chunk.Message.Content;
+            var toolCalls = chunk.Message.ToolCalls?
+                .Select(tc => new AiToolCall(tc.Function.Name, tc.Function.Arguments))
+                .ToList();
+
+            if (!string.IsNullOrEmpty(content) || toolCalls is { Count: > 0 })
+            {
+                yield return new AiChatDelta(content, toolCalls);
+            }
+
+            if (chunk.Done)
+            {
+                break;
+            }
+        }
+    }
+
+    private static OllamaChatMessage ToOllama(AiMessage m) => new()
+    {
+        Role = m.Role,
+        Content = m.Content,
+        ToolName = m.ToolName,
+        ToolCalls = m.ToolCalls?.Select(tc => new OllamaToolCall
+        {
+            Function = new OllamaToolCallFunction
+            {
+                Name = tc.Name,
+                Arguments = tc.Arguments
+            }
+        }).ToList()
+    };
 }
