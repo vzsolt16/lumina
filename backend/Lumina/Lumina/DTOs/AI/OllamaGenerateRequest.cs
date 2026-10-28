@@ -28,4 +28,9 @@ public class OllamaOptions
 {
     [JsonPropertyName("num_predict")]
     public int? NumPredict { get; set; }
+
+    // Total context window (prompt + generation). Ollama defaults this to 4096,
+    // which the injected document blows past; set it so requests aren't rejected.
+    [JsonPropertyName("num_ctx")]
+    public int? NumCtx { get; set; }
 }

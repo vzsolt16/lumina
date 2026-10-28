@@ -115,7 +115,8 @@ public class ChatService : IChatService
                     MessageId = m.Id,
                     Target = m.ProposalTarget,
                     Replacement = m.ProposalReplacement ?? string.Empty,
-                    Status = m.ProposalStatus ?? EditProposalStatus.Pending
+                    Status = m.ProposalStatus ?? EditProposalStatus.Pending,
+                    Kind = m.ProposalKind ?? ProposalKindReplace
                 }
             })
             .ToListAsync();
@@ -181,23 +182,29 @@ public class ChatService : IChatService
         }
 
         var messages = BuildMessages(fileName, content, history, question);
-        var tools = new List<AiTool> { RenameDocumentTool };
+        var tools = new List<AiTool>
+        {
+            RenameDocumentTool, AppendTextTool, InsertTextTool, ReplaceTextTool
+        };
 
         var askedAt = DateTime.UtcNow;
         // Generated up front so the proposal event streamed to the client refers
         // to the same message id the proposal is persisted under.
         var assistantMessageId = Guid.NewGuid();
 
-        // What the user actually sees — the raw stream minus the edit-proposal
-        // marker block. This (not the raw answer) is persisted as the message.
+        // What the user actually sees; this (not the tool chatter) is persisted as
+        // the message.
         var visible = new StringBuilder();
-        var filter = new EditProposalStreamFilter();
+        // Set when a content tool proposes a change — persisted on the message and
+        // applied only when the user accepts it. At most one proposal per reply.
         string? proposalTarget = null;
         string? proposalReplacement = null;
+        string? proposalKind = null;
+        var proposalCreated = false;
         var completed = false;
         var seenContent = false;
-        // Set once a tool mutates the document, so we can still show a confirmation
-        // if the model exhausts the turn cap without producing any visible reply.
+        // Set once a tool mutates the document (rename), so we can still show a
+        // confirmation if the model produces no visible reply.
         var toolMutatedDoc = false;
 
         try
@@ -231,11 +238,7 @@ public class ChatService : IChatService
 
                     rawTurnText.Append(token);
 
-                    var chunk = filter.Push(token);
-                    if (chunk.Length == 0)
-                    {
-                        continue;
-                    }
+                    var chunk = token;
 
                     // Skip the leading whitespace the model emits before its first
                     // real content, so the answer doesn't start with blank lines.
@@ -270,83 +273,72 @@ public class ChatService : IChatService
                     var label = ToolActivityLabel(call);
                     yield return ChatStreamEvent.ForTool(call.Name, label, ChatStreamEvent.ToolRunning);
 
-                    var (resultText, updatedDoc) = await ExecuteToolAsync(
-                        call, documentId, userId, cancellationToken);
+                    var (resultText, updatedDoc, proposalDraft) = await ExecuteToolAsync(
+                        call, documentId, userId, content, cancellationToken);
+
+                    // A content tool proposes (never directly applies) a change. Keep
+                    // only the first proposal per reply and turn it into the pending
+                    // proposal the client renders; tell the model it's proposed, not
+                    // done, so it confirms rather than claiming success.
+                    EditProposalResponse? proposalEvent = null;
+                    if (proposalDraft is not null)
+                    {
+                        if (proposalCreated)
+                        {
+                            resultText = "Error: a change has already been proposed in this reply; "
+                                + "only one is allowed. Do not propose another.";
+                        }
+                        else
+                        {
+                            var draft = proposalDraft.Value;
+                            proposalCreated = true;
+                            proposalTarget = draft.Target;
+                            proposalReplacement = draft.Replacement;
+                            proposalKind = draft.Kind;
+                            proposalEvent = new EditProposalResponse
+                            {
+                                MessageId = assistantMessageId,
+                                Target = draft.Target,
+                                Replacement = draft.Replacement,
+                                Status = EditProposalStatus.Pending,
+                                Kind = draft.Kind
+                            };
+                        }
+                    }
 
                     messages.Add(new AiMessage("tool", resultText, ToolName: call.Name));
 
                     yield return ChatStreamEvent.ForTool(call.Name, label, ChatStreamEvent.ToolDone);
 
-                    // A tool that changed the document (e.g. rename) is applied
-                    // immediately; tell the client so the header/Content tab refresh.
+                    // rename applies immediately; tell the client so the header and
+                    // Content tab refresh.
                     if (updatedDoc is not null)
                     {
                         toolMutatedDoc = true;
                         yield return ChatStreamEvent.ForDocument(updatedDoc);
                     }
-                }
-            }
 
-            var (remainder, proposal) = filter.Finish();
-
-            if (remainder.Length > 0)
-            {
-                if (!seenContent)
-                {
-                    remainder = remainder.TrimStart();
-                }
-                if (remainder.Length > 0)
-                {
-                    seenContent = true;
-                    visible.Append(remainder);
-                    yield return ChatStreamEvent.ForToken(remainder);
-                }
-            }
-
-            if (proposal is not null)
-            {
-                var (target, replacement) = proposal.Value;
-
-                // The edit is only applicable if the model quoted the document
-                // verbatim and unambiguously (exactly one occurrence — otherwise
-                // apply could rewrite the wrong passage); if not, say so instead
-                // of showing a broken diff.
-                var occurrences = CountOccurrences(content, target);
-
-                if (target.Length > 0 && target != replacement && occurrences == 1)
-                {
-                    proposalTarget = target;
-                    proposalReplacement = replacement;
-
-                    yield return ChatStreamEvent.ForProposal(new EditProposalResponse
+                    if (proposalEvent is not null)
                     {
-                        MessageId = assistantMessageId,
-                        Target = target,
-                        Replacement = replacement,
-                        Status = EditProposalStatus.Pending
-                    });
-                }
-                else
-                {
-                    var reason = occurrences > 1
-                        ? "the passage I tried to change appears more than once in the "
-                          + "document, so applying it could change the wrong one"
-                        : "the passage I tried to change doesn't match the document exactly";
-                    var note = (visible.Length > 0 ? "\n\n" : string.Empty)
-                        + $"_I drafted an edit, but {reason}, so I can't offer it safely. "
-                        + "Try asking again, quoting the part you want changed._";
-                    visible.Append(note);
-                    yield return ChatStreamEvent.ForToken(note);
+                        yield return ChatStreamEvent.ForProposal(proposalEvent);
+                    }
                 }
             }
 
-            // A tool changed the document but the model gave no words (e.g. it hit
-            // the turn cap): don't leave an empty reply bubble.
-            if (visible.Length == 0 && toolMutatedDoc && proposalTarget is null)
+            // A tool proposed a change (or renamed) but the model gave no words
+            // (e.g. it hit the turn cap): don't leave an empty reply bubble.
+            if (visible.Length == 0)
             {
-                const string fallback = "Done — I made the change.";
-                visible.Append(fallback);
-                yield return ChatStreamEvent.ForToken(fallback);
+                var fallback = proposalCreated
+                    ? "I've proposed the change above — review it and apply it when you're ready."
+                    : toolMutatedDoc
+                        ? "Done — I made the change."
+                        : null;
+                if (fallback is not null)
+                {
+                    visible.Append(fallback);
+                    yield return ChatStreamEvent.ForToken(fallback);
+                }
             }
 
             completed = true;
@@ -381,7 +373,8 @@ public class ChatService : IChatService
                     CreatedAt = completedAt,
                     ProposalTarget = proposalTarget,
                     ProposalReplacement = proposalReplacement,
-                    ProposalStatus = proposalTarget is null ? null : EditProposalStatus.Pending
+                    ProposalStatus = proposalTarget is null ? null : EditProposalStatus.Pending,
+                    ProposalKind = proposalKind
                 });
 
                 // Bump the conversation so it sorts to the top, and name it from
@@ -413,26 +406,13 @@ public class ChatService : IChatService
         var message = await LoadProposalMessageAsync(db, documentId, conversationId, messageId, userId);
         var document = message.Conversation.Document;
 
-        // The document may have been edited since the proposal was made; re-check
-        // that the passage still exists — and is still unambiguous — rather than
-        // blindly rewriting content.
-        var occurrences = CountOccurrences(document.Content, message.ProposalTarget!);
-        if (occurrences == 0)
-        {
-            throw new InvalidOperationException(
-                "The document has changed since this edit was proposed; the passage to replace no longer exists.");
-        }
-        if (occurrences > 1)
-        {
-            throw new InvalidOperationException(
-                "The document has changed since this edit was proposed; the passage to replace now appears more than once.");
-        }
-
-        var index = document.Content.IndexOf(message.ProposalTarget!, StringComparison.Ordinal);
-
-        var newContent = document.Content
-            .Remove(index, message.ProposalTarget!.Length)
-            .Insert(index, message.ProposalReplacement ?? string.Empty);
+        // The document may have been edited since the proposal was made; each
+        // path re-checks that the passage still exists (and is still unambiguous)
+        // rather than blindly rewriting content.
+        var replacement = message.ProposalReplacement ?? string.Empty;
+        var newContent = message.ProposalKind == ProposalKindInsert
+            ? ApplyInsert(document.Content, message.ProposalTarget!, replacement)
+            : ApplyReplace(document.Content, message.ProposalTarget!, replacement);
 
         const long MaxContentSize = 2 * 1024 * 1024; // mirror the upload/edit cap
         var size = Encoding.UTF8.GetByteCount(newContent);
@@ -495,6 +475,52 @@ public class ChatService : IChatService
         return message;
     }
 
+    // Rewrites the single occurrence of target in content. Throws if the passage
+    // no longer matches exactly or is no longer unique.
+    private static string ApplyReplace(string content, string target, string replacement)
+    {
+        var occurrences = CountOccurrences(content, target);
+        if (occurrences == 0)
+        {
+            throw new InvalidOperationException(
+                "The document has changed since this edit was proposed; the passage to replace no longer exists.");
+        }
+        if (occurrences > 1)
+        {
+            throw new InvalidOperationException(
+                "The document has changed since this edit was proposed; the passage to replace now appears more than once.");
+        }
+
+        var index = content.IndexOf(target, StringComparison.Ordinal);
+        return content.Remove(index, target.Length).Insert(index, replacement);
+    }
+
+    // Inserts text after the single occurrence of anchor, separated by a blank
+    // line. An empty anchor appends to the end of the document. Throws if a
+    // non-empty anchor no longer matches exactly or is no longer unique.
+    private static string ApplyInsert(string content, string anchor, string text)
+    {
+        if (anchor.Length == 0)
+        {
+            return content.Length == 0 ? text : content.TrimEnd() + "\n\n" + text;
+        }
+
+        var occurrences = CountOccurrences(content, anchor);
+        if (occurrences == 0)
+        {
+            throw new InvalidOperationException(
+                "The document has changed since this edit was proposed; the passage to insert after no longer exists.");
+        }
+        if (occurrences > 1)
+        {
+            throw new InvalidOperationException(
+                "The document has changed since this edit was proposed; the passage to insert after now appears more than once.");
+        }
+
+        var index = content.IndexOf(anchor, StringComparison.Ordinal) + anchor.Length;
+        return content.Insert(index, "\n\n" + text);
+    }
+
     // Counts occurrences (including overlapping ones) of a passage in the
     // document, stopping at 2 — callers only care about "none / one / many".
     private static int CountOccurrences(string content, string target)
@@ -553,6 +579,86 @@ public class ChatService : IChatService
             required = new[] { "new_name" }
         }));
 
+    // Content tools don't change the document directly — they propose an edit the
+    // user reviews and applies (see ExecuteToolAsync). Structured arguments are far
+    // more reliable for a small model than a freeform marker block in the reply.
+    private static readonly AiTool AppendTextTool = new(
+        "append_text",
+        "Add new text to the END of the document (e.g. a summary or conclusion). Use when the "
+        + "user asks to add, append, or write something new at the end. The change is proposed "
+        + "for the user to review, not applied directly.",
+        JsonSerializer.SerializeToElement(new
+        {
+            type = "object",
+            properties = new
+            {
+                text = new
+                {
+                    type = "string",
+                    description = "The new text to add at the end of the document."
+                }
+            },
+            required = new[] { "text" }
+        }));
+
+    private static readonly AiTool InsertTextTool = new(
+        "insert_text",
+        "Insert new text into the middle of the document, right after an existing passage. The "
+        + "change is proposed for the user to review, not applied directly.",
+        JsonSerializer.SerializeToElement(new
+        {
+            type = "object",
+            properties = new
+            {
+                after_text = new
+                {
+                    type = "string",
+                    description = "A short passage copied EXACTLY from the document; the new text "
+                        + "is inserted right after it. Must appear exactly once."
+                },
+                new_text = new
+                {
+                    type = "string",
+                    description = "The new text to insert."
+                }
+            },
+            required = new[] { "after_text", "new_text" }
+        }));
+
+    private static readonly AiTool ReplaceTextTool = new(
+        "replace_text",
+        "Replace an existing passage of the document with new text — use to rewrite, correct, "
+        + "shorten, expand, or (with an empty replacement) delete it. The change is proposed for "
+        + "the user to review, not applied directly.",
+        JsonSerializer.SerializeToElement(new
+        {
+            type = "object",
+            properties = new
+            {
+                old_text = new
+                {
+                    type = "string",
+                    description = "The passage to replace, copied EXACTLY from the document. Must "
+                        + "appear exactly once."
+                },
+                new_text = new
+                {
+                    type = "string",
+                    description = "The replacement text. Leave empty to delete the passage."
+                }
+            },
+            required = new[] { "old_text", "new_text" }
+        }));
+
+    // ProposalKind values shared with the client (see EditProposalResponse.Kind).
+    private const string ProposalKindReplace = "replace";
+    private const string ProposalKindInsert = "insert";
+
+    // A change a content tool proposes, folded into the pending proposal the user
+    // reviews. Target is the passage to replace / the anchor to insert after (empty
+    // to append); Kind is ProposalKindReplace or ProposalKindInsert.
+    private readonly record struct ProposalDraft(string Target, string Replacement, string Kind);
+
     // A short human label for a tool call, shown to the user while the tool runs.
     private static string ToolActivityLabel(AiToolCall call)
     {
@@ -568,16 +674,25 @@ public class ChatService : IChatService
                 }
                 return "Renaming document";
 
+            case "append_text":
+                return "Proposing an addition";
+            case "insert_text":
+                return "Proposing an insertion";
+            case "replace_text":
+                return "Proposing an edit";
+
             default:
                 return "Working";
         }
     }
 
-    // Runs a tool the model called. Returns the text fed back to the model and the
-    // updated document if the tool changed it. Bad arguments / unknown tools come
-    // back as an error string the model can recover from — this never throws.
-    private async Task<(string ResultText, DocumentDetailResponse? UpdatedDoc)> ExecuteToolAsync(
-        AiToolCall call, Guid documentId, Guid userId, CancellationToken cancellationToken)
+    // Runs a tool the model called. Returns the text fed back to the model, the
+    // updated document if the tool changed it directly (rename), and a proposed
+    // change if it's a content tool (applied later, only if the user accepts). Bad
+    // arguments / unknown tools come back as an error string the model can recover
+    // from — this never throws.
+    private async Task<(string ResultText, DocumentDetailResponse? UpdatedDoc, ProposalDraft? Proposal)> ExecuteToolAsync(
+        AiToolCall call, Guid documentId, Guid userId, string content, CancellationToken cancellationToken)
     {
         switch (call.Name)
         {
@@ -589,18 +704,18 @@ public class ChatService : IChatService
                     || !call.Arguments.TryGetProperty("new_name", out var nameElement)
                     || nameElement.ValueKind != JsonValueKind.String)
                 {
-                    return ("Error: the new_name argument was missing.", null);
+                    return ("Error: the new_name argument was missing.", null, null);
                 }
 
                 // Mirror the validation in DocumentService.UpdateAsync.
                 var newName = nameElement.GetString()!.Trim();
                 if (newName.Length == 0)
                 {
-                    return ("Error: the name cannot be empty.", null);
+                    return ("Error: the name cannot be empty.", null, null);
                 }
                 if (newName.Length > 255)
                 {
-                    return ("Error: the name is too long (max 255 characters).", null);
+                    return ("Error: the name is too long (max 255 characters).", null, null);
                 }
 
                 using (var scope = _scopeFactory.CreateScope())
@@ -611,7 +726,7 @@ public class ChatService : IChatService
                         .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken);
                     if (document is null)
                     {
-                        return ("Error: the document no longer exists.", null);
+                        return ("Error: the document no longer exists.", null, null);
                     }
 
                     document.FileName = newName;
@@ -626,12 +741,104 @@ public class ChatService : IChatService
                         UploadedAt = document.UploadedAt,
                         UpdatedAt = document.UpdatedAt,
                         Content = document.Content
-                    });
+                    }, null);
                 }
 
+            case "append_text":
+            {
+                if (!TryGetStringArg(call, "text", out var appendText) || appendText.Trim().Length == 0)
+                {
+                    return ("Error: the text argument was missing or empty.", null, null);
+                }
+                return (
+                    "Proposed adding the text to the end of the document. The user will review and "
+                    + "apply it — confirm briefly, and don't claim it's already done.",
+                    null,
+                    new ProposalDraft(string.Empty, appendText.Trim(), ProposalKindInsert));
+            }
+
+            case "insert_text":
+            {
+                if (!TryGetStringArg(call, "after_text", out var afterText) || afterText.Trim().Length == 0)
+                {
+                    return ("Error: the after_text argument was missing or empty.", null, null);
+                }
+                if (!TryGetStringArg(call, "new_text", out var insertText) || insertText.Trim().Length == 0)
+                {
+                    return ("Error: the new_text argument was missing or empty.", null, null);
+                }
+                var anchor = afterText.Trim();
+                var anchorCount = CountOccurrences(content, anchor);
+                if (anchorCount == 0)
+                {
+                    return ("Error: after_text was not found in the document. Copy a short passage "
+                        + "exactly as it appears.", null, null);
+                }
+                if (anchorCount > 1)
+                {
+                    return ("Error: after_text appears more than once; quote a longer, unique passage.",
+                        null, null);
+                }
+                return (
+                    "Proposed inserting the text after that passage. The user will review and apply "
+                    + "it — confirm briefly, and don't claim it's already done.",
+                    null,
+                    new ProposalDraft(anchor, insertText.Trim(), ProposalKindInsert));
+            }
+
+            case "replace_text":
+            {
+                if (!TryGetStringArg(call, "old_text", out var oldText) || oldText.Trim().Length == 0)
+                {
+                    return ("Error: the old_text argument was missing or empty.", null, null);
+                }
+                // new_text may be empty (a deletion), so only require it to be present.
+                if (!TryGetStringArg(call, "new_text", out var replaceWith))
+                {
+                    return ("Error: the new_text argument was missing.", null, null);
+                }
+                var oldPassage = oldText.Trim();
+                var newPassage = replaceWith.Trim();
+                if (oldPassage == newPassage)
+                {
+                    return ("Error: old_text and new_text are identical; nothing to change.", null, null);
+                }
+                var oldCount = CountOccurrences(content, oldPassage);
+                if (oldCount == 0)
+                {
+                    return ("Error: old_text was not found in the document. Copy a short passage "
+                        + "exactly as it appears.", null, null);
+                }
+                if (oldCount > 1)
+                {
+                    return ("Error: old_text appears more than once; quote a longer, unique passage.",
+                        null, null);
+                }
+                return (
+                    "Proposed replacing that passage. The user will review and apply it — confirm "
+                    + "briefly, and don't claim it's already done.",
+                    null,
+                    new ProposalDraft(oldPassage, newPassage, ProposalKindReplace));
+            }
+
             default:
-                return ($"Error: unknown tool '{call.Name}'.", null);
+                return ($"Error: unknown tool '{call.Name}'.", null, null);
         }
+    }
+
+    // Extracts a string argument from a tool call, guarding against a missing or
+    // non-object Arguments element (a model may emit a call with no arguments).
+    private static bool TryGetStringArg(AiToolCall call, string name, out string value)
+    {
+        value = string.Empty;
+        if (call.Arguments.ValueKind != JsonValueKind.Object
+            || !call.Arguments.TryGetProperty(name, out var element)
+            || element.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+        value = element.GetString() ?? string.Empty;
+        return true;
     }
 
     // The document is injected wholesale for now ("start simple"). When RAG lands,
@@ -675,34 +882,28 @@ public class ChatService : IChatService
             "table, or keep each cell to short comma-separated text.");
         sb.AppendLine();
         sb.AppendLine(
-            "You can also propose edits to the document when the user explicitly asks you to " +
-            "change, rewrite, correct, expand or delete part of it. To propose an edit, first " +
-            "write a short reply explaining the change, then END your reply with this exact block:");
-        sb.AppendLine(EditProposalStreamFilter.TargetMarker);
-        sb.AppendLine("(the passage to replace, copied EXACTLY, character for character, from the document)");
-        sb.AppendLine(EditProposalStreamFilter.ReplacementMarker);
-        sb.AppendLine("(the new text that replaces that passage)");
-        sb.AppendLine(EditProposalStreamFilter.EndMarker);
-        sb.AppendLine("Rules for edits:");
+            "When the user explicitly asks you to change the document, call the matching tool " +
+            "instead of describing the change or writing the edited text in your reply:");
         sb.AppendLine(
-            "- The target must be copied verbatim from the document — do not paraphrase, " +
-            "reformat, or fix anything inside it.");
+            "- To ADD text to the end (e.g. \"add a summary\", \"append a conclusion\"), call " +
+            "append_text with the new text. This is the usual way to add something.");
         sb.AppendLine(
-            "- Keep the target as short as possible while still being unique within the document.");
-        sb.AppendLine("- To delete a passage, leave the replacement section empty.");
-        sb.AppendLine("- Propose at most ONE edit per reply; nothing may come after the end marker.");
+            "- To CHANGE, rewrite, correct, shorten, expand, or delete existing text, call " +
+            "replace_text with old_text (an exact quote from the document) and new_text (leave " +
+            "new_text empty to delete).");
         sb.AppendLine(
-            "- An edit is only a proposal — the user reviews and applies it themselves. Never " +
-            "claim the document has already been changed.");
+            "- To INSERT text in the middle, call insert_text with after_text (an exact quote to " +
+            "insert after) and new_text.");
         sb.AppendLine(
-            "- For ordinary questions, or if the user hasn't clearly asked for a change, just " +
-            "answer normally without this block.");
-        sb.AppendLine();
+            "- To rename the document, call rename_document.");
         sb.AppendLine(
-            "You also have tools you can call. When the user explicitly asks for an action a tool " +
-            "covers — for example renaming this document — call the tool instead of describing the " +
-            "steps. Renaming is applied immediately, so afterwards just confirm it briefly. Use the " +
-            "edit-proposal block above only for changes to the document's content, not its name.");
+            "For replace_text and insert_text, copy the quoted passage VERBATIM from the document " +
+            "(character for character) and keep it short but unique — the tool matches it exactly.");
+        sb.AppendLine(
+            "append_text, insert_text, and replace_text only PROPOSE a change; the user reviews and " +
+            "applies it, so never say the document has been changed — just briefly say what you " +
+            "proposed. Rename applies immediately. Make at most ONE change per reply. For ordinary " +
+            "questions, just answer normally without calling any tool.");
         sb.AppendLine();
         sb.AppendLine($"--- DOCUMENT: {fileName} ---");
         sb.AppendLine(content);

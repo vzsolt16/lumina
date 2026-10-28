@@ -505,16 +505,38 @@ export default function ChatTab() {
                     {!isUser && m.proposal && (
                       <div className="chat-proposal">
                         <div className="chat-proposal-head">
-                          <span>// PROPOSED_EDIT</span>
+                          <span>
+                            {m.proposal.kind === 'insert'
+                              ? '// PROPOSED_ADDITION'
+                              : '// PROPOSED_EDIT'}
+                          </span>
                           <span className={`chat-proposal-status ${m.proposal.status}`}>
                             {m.proposal.status.toUpperCase()}
                           </span>
                         </div>
-                        {m.proposal.target && (
-                          <pre className="chat-proposal-block del">{m.proposal.target}</pre>
-                        )}
-                        {m.proposal.replacement && (
-                          <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                        {m.proposal.kind === 'insert' ? (
+                          // An insertion: the anchor (if any) is context, not a
+                          // deletion — the new text is added after it.
+                          <>
+                            {m.proposal.target && (
+                              <>
+                                <div className="chat-proposal-caption">// AFTER THIS PASSAGE</div>
+                                <pre className="chat-proposal-block ctx">{m.proposal.target}</pre>
+                              </>
+                            )}
+                            {m.proposal.replacement && (
+                              <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {m.proposal.target && (
+                              <pre className="chat-proposal-block del">{m.proposal.target}</pre>
+                            )}
+                            {m.proposal.replacement && (
+                              <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                            )}
+                          </>
                         )}
                         {m.proposal.status === 'pending' && (
                           <div className="chat-proposal-actions">

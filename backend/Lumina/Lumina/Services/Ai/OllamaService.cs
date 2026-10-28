@@ -10,12 +10,16 @@ public class OllamaService : IAiService
 {
     private readonly HttpClient _httpClient;
     private readonly string _model;
+    private readonly int _numCtx;
 
     public OllamaService(HttpClient httpClient, IConfiguration configuration)
     {
         _httpClient = httpClient;
         _model = configuration["Ollama:Model"]
             ?? throw new InvalidOperationException("Ollama:Model is not configured.");
+        // Ollama's default context is 4096, which the wholesale-injected document
+        // overflows; override it (configurable so big documents can go higher).
+        _numCtx = configuration.GetValue<int?>("Ollama:NumCtx") ?? 8192;
     }
 
     public async Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000)
@@ -29,7 +33,8 @@ public class OllamaService : IAiService
             Format = schema,
             Options = new OllamaOptions
             {
-                NumPredict = maxTokens
+                NumPredict = maxTokens,
+                NumCtx = _numCtx
             }
         };
 
@@ -37,7 +42,7 @@ public class OllamaService : IAiService
             "/api/generate",
             request);
 
-        response.EnsureSuccessStatusCode();
+        await EnsureOllamaSuccessAsync(response, CancellationToken.None);
 
         var result = await response.Content
             .ReadFromJsonAsync<OllamaGenerateResponse>();
@@ -80,7 +85,8 @@ public class OllamaService : IAiService
             Think = false,
             Options = new OllamaOptions
             {
-                NumPredict = maxTokens
+                NumPredict = maxTokens,
+                NumCtx = _numCtx
             }
         };
 
@@ -96,7 +102,7 @@ public class OllamaService : IAiService
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
 
-        response.EnsureSuccessStatusCode();
+        await EnsureOllamaSuccessAsync(response, cancellationToken);
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
@@ -162,7 +168,8 @@ public class OllamaService : IAiService
                 }).ToList(),
             Options = new OllamaOptions
             {
-                NumPredict = maxTokens
+                NumPredict = maxTokens,
+                NumCtx = _numCtx
             }
         };
 
@@ -176,7 +183,7 @@ public class OllamaService : IAiService
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
 
-        response.EnsureSuccessStatusCode();
+        await EnsureOllamaSuccessAsync(response, cancellationToken);
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
@@ -225,6 +232,22 @@ public class OllamaService : IAiService
                 break;
             }
         }
+    }
+
+    // Ollama returns the reason for a 4xx (bad option, model without tool/think
+    // support, malformed tool schema) in the response body, which
+    // EnsureSuccessStatusCode discards. Surface it so the failure is diagnosable.
+    private static async Task EnsureOllamaSuccessAsync(
+        HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        throw new HttpRequestException(
+            $"Ollama request failed ({(int)response.StatusCode} {response.ReasonPhrase}): {body}");
     }
 
     private static OllamaChatMessage ToOllama(AiMessage m) => new()

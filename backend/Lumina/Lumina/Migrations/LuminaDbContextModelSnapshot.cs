@@ -124,6 +124,9 @@ namespace Lumina.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ProposalKind")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ProposalReplacement")
                         .HasColumnType("TEXT");
 
