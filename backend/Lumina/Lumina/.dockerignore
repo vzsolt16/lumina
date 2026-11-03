@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+**/.idea/
+**/lumina.db*
+.env
+*.user
+*.suo
+*.http
+Dockerfile

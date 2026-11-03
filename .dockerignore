@@ -1,0 +1,11 @@
+.git
+.gitignore
+.DS_Store
+frontend/node_modules
+frontend/dist
+backend/Lumina/Lumina/bin
+backend/Lumina/Lumina/obj
+backend/Lumina/Lumina.Tests/bin
+backend/Lumina/Lumina.Tests/obj
+backend/Lumina/.env
+backend/Lumina/Lumina/lumina.db*

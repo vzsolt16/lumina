@@ -134,6 +134,54 @@ npm run dev
 The app runs on `http://localhost:5173` and proxies `/api` and `/ws` requests to the
 backend, so make sure the backend (and Ollama) are running too.
 
+## Run with Docker
+
+Docker Compose runs the frontend and backend in containers. The frontend is
+available at `http://localhost:8080`.
+
+### Ollama running on the host
+
+This is the default mode. Ollama runs natively on your machine, while the backend
+container connects to it through `host.docker.internal:11434`.
+
+From the repository root:
+
+```bash
+cp .env.docker.example .env
+```
+
+Edit `.env` and set `JWT_KEY` to a random value of at least 32 characters. Make
+sure Ollama is running and that the model is available:
+
+```bash
+ollama serve
+ollama pull qwen3:4b-instruct
+```
+
+Start the application:
+
+```bash
+docker compose up --build
+```
+
+### Ollama running in Docker
+
+Use the `ai` Compose profile to run Ollama in its own container:
+
+```bash
+OLLAMA_BASE_URL=http://ollama:11434 docker compose --profile ai up --build
+```
+
+Pull the model into the Ollama container once:
+
+```bash
+docker compose exec ollama ollama pull qwen3:4b-instruct
+```
+
+The `ollama-data` volume preserves the downloaded model weights when the
+container is recreated. The `lumina-data` volume likewise preserves the SQLite
+database. Removing volumes with `docker compose down -v` deletes both.
+
 ## Status
 
 🚧 Work in progress

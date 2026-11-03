@@ -137,6 +137,13 @@ builder.Services.AddHttpClient<IAiService, OllamaService>(client =>
 
 var app = builder.Build();
 
+// Apply pending EF Core migrations
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+    await db.Database.MigrateAsync();
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
