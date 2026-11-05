@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useOutletContext } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { updateDocument } from '../../api/client.js'
 import { getFileExtension, getFileStem } from '../../constants/documentFormats.js'
 
@@ -14,6 +16,7 @@ export default function ContentTab() {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [contentView, setContentView] = useState('formatted')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -23,6 +26,7 @@ export default function ContentTab() {
       setTitle(getFileStem(doc.fileName))
       setContent(doc.content ?? '')
     }
+    setContentView('formatted')
     setEditing(false)
     setError('')
   }, [doc?.id])
@@ -66,6 +70,8 @@ export default function ContentTab() {
     setError('')
   }
 
+  const isMarkdown = getFileExtension(doc.fileName).toLowerCase() === '.md'
+
   return (
     <div>
       <div className="studio-actions">
@@ -88,7 +94,30 @@ export default function ContentTab() {
       <div className="panel" style={{ marginTop: '8px' }}>
         <div className="panel-bar">
           <div className="panel-title">Content</div>
-          <div className="panel-status">{editing ? 'EDITING' : 'READ_ONLY'}</div>
+          {editing ? (
+            <div className="panel-status">EDITING</div>
+          ) : isMarkdown ? (
+            <div className="doc-view-toggle" role="group" aria-label="Content view">
+              <button
+                type="button"
+                className={`doc-view-toggle-btn${contentView === 'formatted' ? ' active' : ''}`}
+                aria-pressed={contentView === 'formatted'}
+                onClick={() => setContentView('formatted')}
+              >
+                Formatted
+              </button>
+              <button
+                type="button"
+                className={`doc-view-toggle-btn${contentView === 'raw' ? ' active' : ''}`}
+                aria-pressed={contentView === 'raw'}
+                onClick={() => setContentView('raw')}
+              >
+                Raw
+              </button>
+            </div>
+          ) : (
+            <div className="panel-status">READ_ONLY</div>
+          )}
         </div>
         <div className="panel-body">
           {editing ? (
@@ -126,7 +155,13 @@ export default function ContentTab() {
               {error && <div className="error-line">// ERROR: {error}</div>}
             </>
           ) : doc.content ? (
-            <pre className="doc-content-view">{doc.content}</pre>
+            isMarkdown && contentView === 'formatted' ? (
+              <div className="doc-content-view doc-content-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{doc.content}</ReactMarkdown>
+              </div>
+            ) : (
+              <pre className="doc-content-view">{doc.content}</pre>
+            )
           ) : (
             <div className="gen-empty">// EMPTY_DOCUMENT — click Edit content to add text.</div>
           )}
