@@ -1,15 +1,18 @@
 import { useRef, useState } from 'react'
 import { UploadIcon } from './icons.jsx'
-
-const ALLOWED = ['.txt', '.md']
+import {
+  SUPPORTED_DOCUMENT_ACCEPT,
+  SUPPORTED_DOCUMENT_EXTENSIONS,
+  supportedFormatsLabel,
+} from '../constants/documentFormats.js'
 
 function hasAllowedExt(name) {
   const lower = name.toLowerCase()
-  return ALLOWED.some((ext) => lower.endsWith(ext))
+  return SUPPORTED_DOCUMENT_EXTENSIONS.some((ext) => lower.endsWith(ext))
 }
 
 // Drag-and-drop / click dropzone. Validates extension client-side (the backend
-// enforces .txt/.md too) and hands a valid File up to the parent.
+// enforces the same list) and hands a valid File up to the parent.
 export default function FileUpload({ onFile, disabled }) {
   const inputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
@@ -18,7 +21,7 @@ export default function FileUpload({ onFile, disabled }) {
   function accept(file) {
     if (!file) return
     if (!hasAllowedExt(file.name)) {
-      setError('Only .txt and .md files are supported.')
+      setError(`Supported file types: ${SUPPORTED_DOCUMENT_EXTENSIONS.join(', ')}`)
       return
     }
     setError('')
@@ -53,11 +56,11 @@ export default function FileUpload({ onFile, disabled }) {
       >
         <div className="dropzone-icon"><UploadIcon size={28} /></div>
         <div className="dropzone-title">Drop your notes here</div>
-        <div className="dropzone-hint">CLICK_OR_DRAG · FORMAT: .TXT / .MD</div>
+        <div className="dropzone-hint">CLICK_OR_DRAG · FORMAT: {supportedFormatsLabel()}</div>
         <input
           ref={inputRef}
           type="file"
-          accept=".txt,.md,text/plain,text/markdown"
+          accept={SUPPORTED_DOCUMENT_ACCEPT}
           style={{ display: 'none' }}
           onChange={(e) => accept(e.target.files?.[0])}
           disabled={disabled}

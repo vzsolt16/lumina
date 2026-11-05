@@ -43,7 +43,10 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>
             var serviceProvider = services.BuildServiceProvider();
             using var scope = serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
-            db.Database.EnsureCreated();
+            // The application startup applies migrations. Use the same migration
+            // path here; EnsureCreated creates the schema without migration
+            // history, so Program.cs would try to create the tables again.
+            db.Database.Migrate();
 
             var user = new ApplicationUser { Id = Guid.Parse(TestAuthHandler.TestUserId), Email = "test@test.com", UserName = "test@test.com" };
             db.Users.Add(user);

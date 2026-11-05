@@ -9,7 +9,7 @@ study session via the "study sessions vol. 1" record-sleeve concept, not the fea
 ## Users
 
 Students studying from their own material — primarily university / CS-type learners who
-upload their own notes, lecture handouts, and readings (TXT, MD, PDF). Their context is a
+upload their own notes, lecture handouts, and readings (TXT, MD, PDF, DOCX). Their context is a
 focused study session: they have a specific document in front of them and a goal (review
 before an exam, drill recall, clarify something they don't understand). The job to be done
 is **turn my own documents into active-recall practice** — flashcards, quizzes, and a chat

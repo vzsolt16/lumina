@@ -511,6 +511,23 @@
   cursor: default;
 }
 
+.doc-extension {
+  flex-shrink: 0;
+  font-family: var(--font-tech);
+  color: var(--text-light);
+  letter-spacing: 0.04em;
+}
+
+.doc-name-input {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.doc-name-input .doc-title-input {
+  margin-bottom: 0;
+}
+
 .doc-content-view {
   margin: 0;
   max-height: 60vh;

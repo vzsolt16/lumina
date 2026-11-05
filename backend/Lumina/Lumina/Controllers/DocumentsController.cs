@@ -36,13 +36,10 @@ public class DocumentsController : ControllerBase
             return BadRequest("File too large (max 2 MB).");
         }
 
-        var allowedExtensions = new[] { ".txt", ".md" };
-
-        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-
-        if (!allowedExtensions.Contains(extension))
+        if (!DocumentFileTypes.IsSupported(file.FileName))
         {
-            return BadRequest("Only .txt and .md files are supported.");
+            return BadRequest(
+                $"Supported file types: {string.Join(", ", DocumentFileTypes.SupportedExtensions)}.");
         }
 
         try

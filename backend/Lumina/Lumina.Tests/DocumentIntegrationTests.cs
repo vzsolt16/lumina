@@ -92,4 +92,24 @@ public class DocumentIntegrationTests : IClassFixture<IntegrationTestFactory>
         // Assert
         Assert.Equal(System.Net.HttpStatusCode.NoContent, moveResponse.StatusCode);
     }
+
+    [Fact]
+    public async Task RenameDocument_CannotChangeExtension()
+    {
+        var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes("hello"));
+        content.Add(fileContent, "file", "test.txt");
+        var uploadResponse = await _client.PostAsync("/api/documents", content);
+        var doc = await uploadResponse.Content.ReadFromJsonAsync<UploadDocumentResponse>();
+
+        var renameResponse = await _client.PatchAsJsonAsync(
+            $"/api/documents/{doc!.Id}",
+            new { FileName = "renamed.md" });
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, renameResponse.StatusCode);
+
+        var getResponse = await _client.GetAsync($"/api/documents/{doc.Id}");
+        var stored = await getResponse.Content.ReadFromJsonAsync<DocumentDetailResponse>();
+        Assert.Equal("test.txt", stored!.FileName);
+    }
 }

@@ -68,7 +68,7 @@ All endpoints and SignalR hubs require a valid JWT (`[Authorize]`); only `/api/a
 
 ## Architecture
 
-Lumina is a study-assistant API. Users upload documents (`.txt` / `.md`), which are stored in full as text in SQLite. All AI features derive from that stored `Document.Content`.
+Lumina is a study-assistant API. Users upload documents (`.txt`, `.md`, `.pdf` and `.docx`), which are extracted and stored as text in SQLite. All AI features derive from that stored `Document.Content`.
 
 **Request flow for quiz generation (the most complex feature):**
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useOutletContext } from 'react-router-dom'
 import { updateDocument } from '../../api/client.js'
+import { getFileExtension, getFileStem } from '../../constants/documentFormats.js'
 
 // View + edit the document's title and raw text. The document (incl. content)
 // is loaded once by the workspace (StudioDocument) and handed down via the
@@ -19,7 +20,7 @@ export default function ContentTab() {
   // Sync the editable fields whenever we switch to a different document.
   useEffect(() => {
     if (doc) {
-      setTitle(doc.fileName)
+      setTitle(getFileStem(doc.fileName))
       setContent(doc.content ?? '')
     }
     setEditing(false)
@@ -45,7 +46,10 @@ export default function ContentTab() {
     setSaving(true)
     setError('')
     try {
-      const updated = await updateDocument(docId, { fileName: trimmed, content })
+      const updated = await updateDocument(docId, {
+        fileName: `${trimmed}${getFileExtension(doc.fileName)}`,
+        content,
+      })
       onDocUpdated(updated)
       setEditing(false)
     } catch (err) {
@@ -56,7 +60,7 @@ export default function ContentTab() {
   }
 
   function handleCancel() {
-    setTitle(doc.fileName)
+    setTitle(getFileStem(doc.fileName))
     setContent(doc.content ?? '')
     setEditing(false)
     setError('')
@@ -93,17 +97,20 @@ export default function ContentTab() {
                 // NOTE: editing content won't update flashcards or quizzes already
                 generated from this document — regenerate them to match.
               </div>
-              <label className="doc-edit-label" htmlFor="doc-title">
-                Title
-              </label>
-              <input
-                id="doc-title"
-                className="doc-title-input"
-                value={title}
-                disabled={saving}
-                onChange={(e) => setTitle(e.target.value)}
-                aria-label="Document title"
-              />
+              <label className="doc-edit-label" htmlFor="doc-title">File name</label>
+              <div className="doc-name-input">
+                <input
+                  id="doc-title"
+                  className="doc-title-input"
+                  value={title}
+                  disabled={saving}
+                  onChange={(e) => setTitle(e.target.value)}
+                  aria-label="Document name without extension"
+                />
+                <span className="doc-extension" aria-hidden="true">
+                  {getFileExtension(doc.fileName)}
+                </span>
+              </div>
               <label className="doc-edit-label" htmlFor="doc-content">
                 Content
               </label>

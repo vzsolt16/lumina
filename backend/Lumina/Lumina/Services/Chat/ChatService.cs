@@ -6,6 +6,7 @@ using Lumina.DTOs.Chat;
 using Lumina.DTOs.Document;
 using Lumina.Models;
 using Lumina.Services.AI;
+using Lumina.Services.Documents;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lumina.Services.Chat;
@@ -727,6 +728,10 @@ public class ChatService : IChatService
                     if (document is null)
                     {
                         return ("Error: the document no longer exists.", null, null);
+                    }
+                    if (!DocumentFileTypes.HasSameExtension(document.FileName, newName))
+                    {
+                        return ("Error: the file extension cannot be changed.", null, null);
                     }
 
                     document.FileName = newName;

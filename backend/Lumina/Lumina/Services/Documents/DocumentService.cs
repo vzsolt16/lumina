@@ -23,9 +23,7 @@ public class DocumentService : IDocumentService
             throw new InvalidOperationException("Folder not found.");
         }
 
-        using var reader = new StreamReader(file.OpenReadStream());
-
-        var content = await reader.ReadToEndAsync();
+        var content = await DocumentFileTypes.ExtractTextAsync(file);
 
         var document = new Document
         {
@@ -100,6 +98,10 @@ public class DocumentService : IDocumentService
             if (name.Length > 255)
             {
                 throw new InvalidOperationException("File name is too long (max 255 characters).");
+            }
+            if (!DocumentFileTypes.HasSameExtension(document.FileName, name))
+            {
+                throw new InvalidOperationException("The file extension cannot be changed.");
             }
             document.FileName = name;
         }

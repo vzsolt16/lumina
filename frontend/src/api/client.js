@@ -144,8 +144,8 @@ export function deleteDocument(id) {
 }
 
 /**
- * Update a document's title and/or content. Send only the fields you want to
- * change — `{ fileName }` for a rename, `{ fileName, content }` for a full edit.
+ * Update a document's name stem and/or content. The existing extension is
+ * immutable and must be preserved by callers.
  * @param {string} id
  * @param {{ fileName?: string, content?: string }} payload
  * @returns {Promise<{ id, fileName, fileSize, uploadedAt, updatedAt, content }>}
@@ -172,7 +172,7 @@ export function moveDocument(id, folderId) {
 }
 
 /**
- * Upload a .txt or .md file, optionally into a folder.
+ * Upload a supported document, optionally into a folder.
  * @param {File} file
  * @param {string|null} [folderId] - target folder, or null/undefined for the root.
  * @returns {Promise<{ id: string, fileName: string }>}

@@ -23,6 +23,7 @@ import {
   moveFolder,
   deleteFolder,
 } from '../api/client.js'
+import { getFileExtension, getFileStem } from '../constants/documentFormats.js'
 import './Studio.css'
 
 function formatDate(value) {
@@ -327,7 +328,7 @@ function DocCard({ doc, onDeleted, onRename, onDragStart, onDragEnd }) {
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(doc.fileName)
+  const [name, setName] = useState(getFileStem(doc.fileName))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const wrapRef = useRef(null)
@@ -346,19 +347,20 @@ function DocCard({ doc, onDeleted, onRename, onDragStart, onDragEnd }) {
 
   async function submitRename() {
     const trimmed = name.trim()
-    if (!trimmed || trimmed === doc.fileName) {
+    const fileName = `${trimmed}${getFileExtension(doc.fileName)}`
+    if (!trimmed || fileName === doc.fileName) {
       setEditing(false)
-      setName(doc.fileName)
+      setName(getFileStem(doc.fileName))
       return
     }
     setBusy(true)
     setError('')
     try {
-      await onRename(doc.id, trimmed)
+      await onRename(doc.id, fileName)
       setEditing(false)
     } catch (err) {
       setError(err?.message || 'Rename failed.')
-      setName(doc.fileName)
+      setName(getFileStem(doc.fileName))
     } finally {
       setBusy(false)
     }
@@ -403,12 +405,15 @@ function DocCard({ doc, onDeleted, onRename, onDragStart, onDragEnd }) {
               if (e.key === 'Enter') submitRename()
               if (e.key === 'Escape') {
                 setEditing(false)
-                setName(doc.fileName)
+                setName(getFileStem(doc.fileName))
               }
             }}
             onBlur={submitRename}
-            aria-label="Document title"
+            aria-label="Document name without extension"
           />
+          <span className="doc-extension" aria-hidden="true">
+            {getFileExtension(doc.fileName)}
+          </span>
         </div>
       ) : (
         <Link to={`/studio/${doc.id}`} className="doc-card" draggable={false}>
@@ -468,7 +473,7 @@ function DocCard({ doc, onDeleted, onRename, onDragStart, onDragEnd }) {
                 className="doc-menu-item"
                 role="menuitem"
                 onClick={() => {
-                  setName(doc.fileName)
+                  setName(getFileStem(doc.fileName))
                   setEditing(true)
                   setMenuOpen(false)
                 }}
@@ -766,7 +771,7 @@ export default function Studio() {
             ) : isEmpty ? (
               <div className="gen-empty">
                 {currentFolderId == null
-                  ? '// NO_DOCUMENTS_YET — upload a .txt or .md file above, or create a folder.'
+                  ? '// NO_DOCUMENTS_YET — upload a supported document above, or create a folder.'
                   : '// EMPTY_FOLDER — drag documents here, upload, or add a subfolder.'}
               </div>
             ) : (

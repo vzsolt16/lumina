@@ -27,7 +27,7 @@ Generate interactive quizzes from study materials.
 Review AI-generated flashcards for active recall learning.
 
 Features:
-- Upload TXT, MD and PDF files
+- Upload TXT, MD, PDF and DOCX files
 - AI-generated flashcards
 - AI-generated quizzes
 - Chat with your documents
