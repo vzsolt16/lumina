@@ -157,9 +157,15 @@ namespace Lumina.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("ContentSize")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("ContentVersion")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("FileName")
                         .IsRequired()
@@ -169,6 +175,15 @@ namespace Lumina.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid?>("FolderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalContentType")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalFileName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalStorageKey")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("UpdatedAt")

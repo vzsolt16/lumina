@@ -17,9 +17,12 @@ namespace Lumina.Tests;
 public class IntegrationTestFactory : WebApplicationFactory<Program>
 {
     private DbConnection? _connection;
+    private string? _storageRoot;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        _storageRoot = Path.Combine(Path.GetTempPath(), "lumina-tests", Guid.NewGuid().ToString("N"));
+        builder.UseSetting("Storage:LocalRootPath", _storageRoot);
         builder.ConfigureServices(services =>
         {
             var descriptors = services.Where(
@@ -62,6 +65,10 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>
     {
         base.Dispose(disposing);
         _connection?.Dispose();
+        if (_storageRoot is not null && Directory.Exists(_storageRoot))
+        {
+            Directory.Delete(_storageRoot, recursive: true);
+        }
     }
 }
 

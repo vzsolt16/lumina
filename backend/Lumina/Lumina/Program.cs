@@ -119,6 +119,11 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddSingleton<IBackgroundTaskQueue>(new BackgroundTaskQueue(100));
 builder.Services.AddHostedService<QuizBackgroundWorker>();
 
+builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
+builder.Services.AddSingleton<IDocumentContentExtractor, PlainTextContentExtractor>();
+builder.Services.AddSingleton<IDocumentContentExtractor, PdfContentExtractor>();
+builder.Services.AddSingleton<IDocumentContentExtractor, DocxContentExtractor>();
+builder.Services.AddSingleton<DocumentContentExtractor>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
@@ -162,4 +167,3 @@ app.MapHub<FlashcardHub>("/ws/flashcard");
 app.MapHub<ChatHub>("/ws/chat");
 
 app.Run();
-

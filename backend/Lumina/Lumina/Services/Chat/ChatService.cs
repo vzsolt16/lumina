@@ -415,15 +415,7 @@ public class ChatService : IChatService
             ? ApplyInsert(document.Content, message.ProposalTarget!, replacement)
             : ApplyReplace(document.Content, message.ProposalTarget!, replacement);
 
-        const long MaxContentSize = 2 * 1024 * 1024; // mirror the upload/edit cap
-        var size = Encoding.UTF8.GetByteCount(newContent);
-        if (size > MaxContentSize)
-        {
-            throw new InvalidOperationException("Applying this edit would exceed the 2 MB document limit.");
-        }
-
-        document.Content = newContent;
-        document.FileSize = size;
+        DocumentContentMutation.Apply(document, newContent);
         document.UpdatedAt = DateTime.UtcNow;
         message.ProposalStatus = EditProposalStatus.Applied;
 
@@ -434,6 +426,8 @@ public class ChatService : IChatService
             Id = document.Id,
             FileName = document.FileName,
             FileSize = document.FileSize,
+            ContentSize = document.ContentSize,
+            ContentVersion = document.ContentVersion,
             UploadedAt = document.UploadedAt,
             UpdatedAt = document.UpdatedAt,
             Content = document.Content
@@ -734,15 +728,20 @@ public class ChatService : IChatService
                         return ("Error: the file extension cannot be changed.", null, null);
                     }
 
-                    document.FileName = newName;
-                    document.UpdatedAt = DateTime.UtcNow;
-                    await db.SaveChangesAsync(cancellationToken);
+                    if (!string.Equals(document.FileName, newName, StringComparison.Ordinal))
+                    {
+                        document.FileName = newName;
+                        document.UpdatedAt = DateTime.UtcNow;
+                        await db.SaveChangesAsync(cancellationToken);
+                    }
 
                     return ($"Done — the document is now named \"{newName}\".", new DocumentDetailResponse
                     {
                         Id = document.Id,
                         FileName = document.FileName,
                         FileSize = document.FileSize,
+                        ContentSize = document.ContentSize,
+                        ContentVersion = document.ContentVersion,
                         UploadedAt = document.UploadedAt,
                         UpdatedAt = document.UpdatedAt,
                         Content = document.Content

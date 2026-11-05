@@ -17,9 +17,21 @@ public class Document
 
     public string FileName { get; set; } = string.Empty;
 
+    // Nullable for documents created before original-file storage was introduced.
+    public string? OriginalFileName { get; set; }
+
+    public string? OriginalStorageKey { get; set; }
+
+    public string? OriginalContentType { get; set; }
+
     public string Content { get; set; } = string.Empty;
     
+    // Original uploaded byte size. This does not change when Content is edited.
     public long FileSize { get; set; }
+
+    public long ContentSize { get; set; }
+
+    public int ContentVersion { get; set; } = 1;
 
     public string ContentType { get; set; } = string.Empty;
 

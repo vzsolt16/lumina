@@ -23,28 +23,22 @@ public class DocumentsController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<UploadDocumentResponse>> Upload(
-        IFormFile? file, [FromForm] Guid? folderId)
+        IFormFile? file,
+        [FromForm] Guid? folderId,
+        CancellationToken cancellationToken)
     {
-        if (file is null || file.Length == 0)
+        if (file is null)
         {
             return BadRequest("No file provided.");
         }
 
-        const long MaxFileSize = 2 * 1024 * 1024;
-        if (file.Length > MaxFileSize)
-        {
-            return BadRequest("File too large (max 2 MB).");
-        }
-
-        if (!DocumentFileTypes.IsSupported(file.FileName))
-        {
-            return BadRequest(
-                $"Supported file types: {string.Join(", ", DocumentFileTypes.SupportedExtensions)}.");
-        }
-
         try
         {
-            var document = await _documentService.UploadAsync(file, User.GetUserId(), folderId);
+            var document = await _documentService.UploadAsync(
+                file,
+                User.GetUserId(),
+                folderId,
+                cancellationToken);
 
             return Ok(new UploadDocumentResponse
             {
@@ -56,6 +50,22 @@ public class DocumentsController : ControllerBase
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    [HttpGet("{id:guid}/original")]
+    public async Task<IActionResult> DownloadOriginal(Guid id, CancellationToken cancellationToken)
+    {
+        var original = await _documentService.OpenOriginalAsync(
+            id,
+            User.GetUserId(),
+            cancellationToken);
+
+        if (original is null)
+        {
+            return NotFound();
+        }
+
+        return File(original.Content, original.ContentType, original.FileName);
     }
 
     [HttpGet]
@@ -80,11 +90,18 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/folder")]
-    public async Task<IActionResult> Move(Guid id, MoveDocumentRequest request)
+    public async Task<IActionResult> Move(
+        Guid id,
+        MoveDocumentRequest request,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var moved = await _documentService.MoveAsync(id, request.FolderId, User.GetUserId());
+            var moved = await _documentService.MoveAsync(
+                id,
+                request.FolderId,
+                User.GetUserId(),
+                cancellationToken);
 
             if (!moved)
             {
@@ -100,11 +117,18 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpPatch("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, UpdateDocumentRequest request)
+    public async Task<IActionResult> Update(
+        Guid id,
+        UpdateDocumentRequest request,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var updated = await _documentService.UpdateAsync(id, request, User.GetUserId());
+            var updated = await _documentService.UpdateAsync(
+                id,
+                request,
+                User.GetUserId(),
+                cancellationToken);
 
             if (updated is null)
             {
@@ -120,9 +144,9 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id)
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        var deleted = await _documentService.DeleteAsync(id, User.GetUserId());
+        var deleted = await _documentService.DeleteAsync(id, User.GetUserId(), cancellationToken);
 
         if (!deleted)
         {

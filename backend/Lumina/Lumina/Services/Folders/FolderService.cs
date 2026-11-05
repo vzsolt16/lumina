@@ -1,6 +1,7 @@
 using Lumina.Data;
 using Lumina.DTOs.Folder;
 using Lumina.Models;
+using Lumina.Services.Documents;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,10 +15,17 @@ public class FolderService : IFolderService
     private const int MaxNameLength = 100;
 
     private readonly LuminaDbContext _db;
+    private readonly IFileStorage _fileStorage;
+    private readonly ILogger<FolderService> _logger;
 
-    public FolderService(LuminaDbContext db)
+    public FolderService(
+        LuminaDbContext db,
+        IFileStorage fileStorage,
+        ILogger<FolderService> logger)
     {
         _db = db;
+        _fileStorage = fileStorage;
+        _logger = logger;
     }
 
     public async Task<List<FolderResponse>> GetAllAsync(Guid userId)
@@ -157,10 +165,51 @@ public class FolderService : IFolderService
             return false;
         }
 
+        var folderIds = await _db.Folders
+            .Where(f => f.UserId == userId)
+            .Select(f => new { f.Id, f.ParentId })
+            .ToListAsync();
+        var deletedFolderIds = new HashSet<Guid> { id };
+        var added = true;
+        while (added)
+        {
+            added = false;
+            foreach (var child in folderIds.Where(f => f.ParentId is not null))
+            {
+                if (child.ParentId is Guid parentId
+                    && deletedFolderIds.Contains(parentId)
+                    && deletedFolderIds.Add(child.Id))
+                {
+                    added = true;
+                }
+            }
+        }
+
+        var storageKeys = await _db.Documents
+            .Where(d => d.UserId == userId && d.FolderId != null && deletedFolderIds.Contains(d.FolderId.Value))
+            .Select(d => d.OriginalStorageKey)
+            .ToListAsync();
+
         // Subfolders and contained documents (and their flashcards/quizzes/chat/jobs)
         // cascade-delete via the FK configuration in LuminaDbContext.
         _db.Folders.Remove(folder);
         await _db.SaveChangesAsync();
+
+        foreach (var storageKey in storageKeys.Where(key => !string.IsNullOrWhiteSpace(key)))
+        {
+            try
+            {
+                await _fileStorage.DeleteAsync(storageKey!);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Folder {FolderId} was deleted but original file cleanup failed for {StorageKey}.",
+                    id,
+                    storageKey);
+            }
+        }
 
         return true;
     }
