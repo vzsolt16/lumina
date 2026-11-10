@@ -124,6 +124,8 @@ public class DocumentIntegrationTests : IClassFixture<IntegrationTestFactory>
             $"/api/documents/{doc.Id}");
 
         Assert.Equal("Console.WriteLine(\"hello\");", response!.Content);
+        Assert.Contains("\"type\":\"doc\"", response.ContentJson);
+        Assert.Contains("\"id\":\"node-", response.ContentJson);
         Assert.Equal(1, response.ContentVersion);
     }
 

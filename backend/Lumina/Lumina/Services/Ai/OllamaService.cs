@@ -219,7 +219,9 @@ public class OllamaService : IAiService
 
             var content = chunk.Message.Content;
             var toolCalls = chunk.Message.ToolCalls?
-                .Select(tc => new AiToolCall(tc.Function.Name, tc.Function.Arguments))
+                .Select(tc => new AiToolCall(
+                    tc.Function.Name,
+                    NormalizeToolArguments(tc.Function.Arguments)))
                 .ToList();
 
             if (!string.IsNullOrEmpty(content) || toolCalls is { Count: > 0 })
@@ -264,4 +266,15 @@ public class OllamaService : IAiService
             }
         }).ToList()
     };
+
+    private static JsonElement NormalizeToolArguments(JsonElement arguments)
+    {
+        if (arguments.ValueKind != JsonValueKind.Undefined)
+        {
+            return arguments;
+        }
+
+        using var document = JsonDocument.Parse("{}");
+        return document.RootElement.Clone();
+    }
 }

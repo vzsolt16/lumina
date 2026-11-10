@@ -45,6 +45,10 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
         modelBuilder.Entity<Document>()
             .HasIndex(d => d.UserId);
 
+        modelBuilder.Entity<Document>()
+            .Property(d => d.ContentVersion)
+            .IsConcurrencyToken();
+
         modelBuilder.Entity<Folder>()
             .HasOne(f => f.User)
             .WithMany(u => u.Folders)
@@ -141,5 +145,8 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
 
         modelBuilder.Entity<ChatMessage>()
             .HasIndex(m => m.ConversationId);
+
+        modelBuilder.Entity<ChatMessage>()
+            .Property(m => m.ProposalContentVersion);
     }
 }

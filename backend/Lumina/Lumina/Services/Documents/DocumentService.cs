@@ -11,17 +11,20 @@ public class DocumentService : IDocumentService
     private readonly LuminaDbContext _db;
     private readonly DocumentContentExtractor _contentExtractor;
     private readonly IFileStorage _fileStorage;
+    private readonly IDocumentContentConverter _contentConverter;
     private readonly ILogger<DocumentService> _logger;
 
     public DocumentService(
         LuminaDbContext db,
         DocumentContentExtractor contentExtractor,
         IFileStorage fileStorage,
+        IDocumentContentConverter contentConverter,
         ILogger<DocumentService> logger)
     {
         _db = db;
         _contentExtractor = contentExtractor;
         _fileStorage = fileStorage;
+        _contentConverter = contentConverter;
         _logger = logger;
     }
 
@@ -55,6 +58,7 @@ public class DocumentService : IDocumentService
             OriginalStorageKey = $"documents/{userId:D}/{Guid.NewGuid():N}{extension}",
             OriginalContentType = GetServerContentType(extension),
             Content = content,
+            ContentJson = _contentConverter.CreateFromPlainText(content),
             FileSize = file.Length,
             ContentSize = Encoding.UTF8.GetByteCount(content),
             ContentVersion = 1,
@@ -104,7 +108,8 @@ public class DocumentService : IDocumentService
                 d.ContentVersion,
                 d.UploadedAt,
                 d.UpdatedAt,
-                d.Content
+                d.Content,
+                d.ContentJson
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -119,7 +124,8 @@ public class DocumentService : IDocumentService
                 ContentVersion = document.ContentVersion,
                 UploadedAt = document.UploadedAt,
                 UpdatedAt = document.UpdatedAt,
-                Content = document.Content
+                Content = document.Content,
+                ContentJson = document.ContentJson
             };
     }
 
@@ -228,7 +234,7 @@ public class DocumentService : IDocumentService
 
         if (request.Content is not null)
         {
-            changed |= DocumentContentMutation.Apply(document, request.Content);
+            changed |= DocumentContentMutation.Apply(document, request.Content, _contentConverter);
         }
 
         if (changed)
@@ -297,7 +303,8 @@ public class DocumentService : IDocumentService
         ContentVersion = document.ContentVersion,
         UploadedAt = document.UploadedAt,
         UpdatedAt = document.UpdatedAt,
-        Content = document.Content
+        Content = document.Content,
+        ContentJson = document.ContentJson
     };
 
     private static string GetServerContentType(string extension) => extension switch

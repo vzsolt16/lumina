@@ -18,4 +18,6 @@ public class EditProposalResponse
     // "replace" (rewrite the target) or "insert" (add Replacement after the
     // target, or at the end when the target is empty).
     public string Kind { get; set; } = "replace";
+
+    public int? ContentVersion { get; set; }
 }

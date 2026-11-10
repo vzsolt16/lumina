@@ -17,4 +17,6 @@ public class DocumentDetailResponse
     public DateTime? UpdatedAt { get; set; }
 
     public string Content { get; set; } = "";
+
+    public string ContentJson { get; set; } = "";
 }

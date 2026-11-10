@@ -30,4 +30,10 @@ public class ChatMessage
     // "replace" (or null, for pre-existing rows) or "insert". Distinguishes a
     // passage rewrite from an insertion/append at apply time.
     public string? ProposalKind { get; set; }
+
+    // Serialized structured operation captured when the proposal was created.
+    // The operation is validated and executed only after user approval.
+    public string? ProposalOperationJson { get; set; }
+
+    public int? ProposalContentVersion { get; set; }
 }

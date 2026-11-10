@@ -125,6 +125,9 @@ builder.Services.AddSingleton<IDocumentContentExtractor, PdfContentExtractor>();
 builder.Services.AddSingleton<IDocumentContentExtractor, DocxContentExtractor>();
 builder.Services.AddSingleton<DocumentContentExtractor>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IDocumentEditorService, DocumentEditorService>();
+builder.Services.AddSingleton<IDocumentContentConverter, ProseMirrorDocumentConverter>();
+builder.Services.AddSingleton<IDocumentContextBuilder, DocumentContextBuilder>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IFlashcardService, FlashcardService>();
@@ -147,6 +150,9 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
     await db.Database.MigrateAsync();
+    await DocumentContentBackfill.RunAsync(
+        db,
+        scope.ServiceProvider.GetRequiredService<IDocumentContentConverter>());
 }
 
 // Configure the HTTP request pipeline.

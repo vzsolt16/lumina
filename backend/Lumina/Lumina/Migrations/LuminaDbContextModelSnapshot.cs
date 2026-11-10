@@ -124,7 +124,13 @@ namespace Lumina.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ProposalContentVersion")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ProposalKind")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProposalOperationJson")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProposalReplacement")
@@ -157,6 +163,10 @@ namespace Lumina.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("ContentSize")
                         .HasColumnType("INTEGER");
 
@@ -165,6 +175,7 @@ namespace Lumina.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("ContentVersion")
+                        .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("FileName")

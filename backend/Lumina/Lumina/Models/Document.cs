@@ -25,6 +25,10 @@ public class Document
     public string? OriginalContentType { get; set; }
 
     public string Content { get; set; } = string.Empty;
+
+    // Canonical editable representation. Content is a derived plain-text
+    // projection maintained from this JSON.
+    public string ContentJson { get; set; } = string.Empty;
     
     // Original uploaded byte size. This does not change when Content is edited.
     public long FileSize { get; set; }

@@ -134,17 +134,27 @@ export default function ChatTab() {
     connection.onreconnected(() => !cancelled && setStatus('ready'))
 
     connectionRef.current = connection
-    connection
-      .start()
-      .then(() => !cancelled && setStatus('ready'))
-      .catch(() => !cancelled && setStatus('error'))
+    const startPromise = connection.start()
+    startPromise
+      .then(() => {
+        if (!cancelled) setStatus('ready')
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setStatus('error')
+          setError(err?.message || 'Could not connect to chat.')
+        }
+      })
 
     return () => {
       cancelled = true
       subscriptionRef.current?.dispose()
       subscriptionRef.current = null
-      connection.stop().catch(() => {})
-      connectionRef.current = null
+      startPromise
+        .catch(() => {})
+        .then(() => connection.stop())
+        .catch(() => {})
+      if (connectionRef.current === connection) connectionRef.current = null
     }
   }, [docId])
 
@@ -301,7 +311,15 @@ export default function ChatTab() {
       }
     }
 
-    subscriptionRef.current = connectionRef.current
+    const connection = connectionRef.current
+    if (!connection || connection.state !== 'Connected') {
+      setStreaming(false)
+      setError('Chat is still connecting. Try again in a moment.')
+      setMessages((prev) => prev.slice(0, -2))
+      return
+    }
+
+    subscriptionRef.current = connection
       .stream('StreamAnswer', convoId, question)
       .subscribe({
         next: (evt) => {
@@ -526,6 +544,38 @@ export default function ChatTab() {
                             )}
                             {m.proposal.replacement && (
                               <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                            )}
+                          </>
+                        ) : m.proposal.kind === 'replace_node' ? (
+                          <>
+                            <div className="chat-proposal-caption">// REPLACEMENT</div>
+                            {m.proposal.replacement && (
+                              <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                            )}
+                          </>
+                        ) : m.proposal.kind === 'insert_node' ? (
+                          <>
+                            <div className="chat-proposal-caption">// ADDITION</div>
+                            {m.proposal.replacement && (
+                              <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                            )}
+                          </>
+                        ) : m.proposal.kind === 'delete_node' ? (
+                          <div className="chat-proposal-caption">// NODE DELETION</div>
+                        ) : m.proposal.kind === 'move_node' ? (
+                          <>
+                            <div className="chat-proposal-caption">// NODE MOVE</div>
+                            {m.proposal.target && (
+                              <>
+                                <div className="chat-proposal-caption">// MOVE THIS</div>
+                                <pre className="chat-proposal-block del">{m.proposal.target}</pre>
+                              </>
+                            )}
+                            {m.proposal.replacement && (
+                              <>
+                                <div className="chat-proposal-caption">// TO AFTER</div>
+                                <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                              </>
                             )}
                           </>
                         ) : (
