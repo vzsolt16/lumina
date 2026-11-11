@@ -74,4 +74,26 @@ internal static class DocumentValidation
             GetExtension(originalName),
             GetExtension(proposedName),
             StringComparison.OrdinalIgnoreCase);
+
+    internal static string PreserveExtension(string currentName, string proposedName)
+    {
+        var safeName = GetSafeFileName(proposedName);
+        var currentExtension = GetExtension(currentName);
+        var proposedExtension = Path.GetExtension(safeName);
+
+        if (string.IsNullOrEmpty(proposedExtension))
+        {
+            safeName += currentExtension;
+            if (safeName.Length > MaxFileNameLength)
+            {
+                throw new InvalidOperationException("File name is too long (max 255 characters).");
+            }
+        }
+        else if (!string.Equals(currentExtension, proposedExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The file extension cannot be changed.");
+        }
+
+        return safeName;
+    }
 }

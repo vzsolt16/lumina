@@ -561,7 +561,12 @@ export default function ChatTab() {
                             )}
                           </>
                         ) : m.proposal.kind === 'delete_node' ? (
-                          <div className="chat-proposal-caption">// NODE DELETION</div>
+                          <>
+                            <div className="chat-proposal-caption">// NODE DELETION</div>
+                            {m.proposal.target && (
+                              <pre className="chat-proposal-block del">{m.proposal.target}</pre>
+                            )}
+                          </>
                         ) : m.proposal.kind === 'move_node' ? (
                           <>
                             <div className="chat-proposal-caption">// NODE MOVE</div>

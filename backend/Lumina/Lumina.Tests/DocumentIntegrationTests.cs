@@ -115,6 +115,26 @@ public class DocumentIntegrationTests : IClassFixture<IntegrationTestFactory>
         Assert.Equal("test.txt", stored!.FileName);
     }
 
+    [Theory]
+    [InlineData("renamed", "renamed.txt")]
+    [InlineData("renamed.txt", "renamed.txt")]
+    public async Task RenameDocument_PreservesExtension(string requestedName, string expectedName)
+    {
+        var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes("hello"));
+        content.Add(fileContent, "file", "test.txt");
+        var uploadResponse = await _client.PostAsync("/api/documents", content);
+        var doc = await uploadResponse.Content.ReadFromJsonAsync<UploadDocumentResponse>();
+
+        var renameResponse = await _client.PatchAsJsonAsync(
+            $"/api/documents/{doc!.Id}",
+            new { FileName = requestedName });
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, renameResponse.StatusCode);
+        var renamed = await renameResponse.Content.ReadFromJsonAsync<DocumentDetailResponse>();
+        Assert.Equal(expectedName, renamed!.FileName);
+    }
+
     [Fact]
     public async Task Upload_SourceCode_ExtractsAsText()
     {

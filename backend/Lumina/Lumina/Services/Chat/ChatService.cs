@@ -207,7 +207,7 @@ public class ChatService : IChatService
             RenameDocumentTool, GetDocumentStructureTool, GetDocumentTextTool,
             GetDocumentNodeTool, ReplaceDocumentNodeTool, InsertDocumentNodeTool,
             DeleteDocumentNodeTool, MoveDocumentNodeTool,
-            AppendTextTool, InsertTextTool, ReplaceTextTool
+            PrependTextTool, AppendTextTool
         };
 
         var askedAt = DateTime.UtcNow;
@@ -296,7 +296,7 @@ public class ChatService : IChatService
                     yield return ChatStreamEvent.ForTool(call.Name, label, ChatStreamEvent.ToolRunning);
 
                     var (resultText, updatedDoc, proposalDraft) = await ExecuteToolAsync(
-                        call, documentId, userId, content, contentVersion, cancellationToken);
+                        call, documentId, userId, content, contentVersion, question, cancellationToken);
 
                     // A content tool proposes (never directly applies) a change. Keep
                     // only the first proposal per reply and turn it into the pending
@@ -455,9 +455,12 @@ public class ChatService : IChatService
         }
 
         var replacement = message.ProposalReplacement ?? string.Empty;
-        var newContent = message.ProposalKind == ProposalKindInsert
-            ? ApplyInsert(document.Content, message.ProposalTarget!, replacement)
-            : ApplyReplace(document.Content, message.ProposalTarget!, replacement);
+        var newContent = message.ProposalKind switch
+        {
+            ProposalKindPrepend => replacement + document.Content,
+            ProposalKindInsert => ApplyInsert(document.Content, message.ProposalTarget!, replacement),
+            _ => ApplyReplace(document.Content, message.ProposalTarget!, replacement)
+        };
 
         DocumentContentMutation.Apply(document, newContent, _contentConverter);
         document.UpdatedAt = DateTime.UtcNow;
@@ -696,10 +699,11 @@ public class ChatService : IChatService
 
     private static readonly AiTool MoveDocumentNodeTool = new(
         "move_document_node",
-        "Propose moving an existing block node. To move it after another block node, pass the "
-        + "destination node's ID as parent_id and set index to 0; the backend treats a block node "
-        + "destination as an 'insert after this node' anchor. To move into a container, pass the "
-        + "container ID and the zero-based child index. The user must approve the proposal.",
+        "Propose moving an existing block node. To move before or after another block node, pass "
+        + "that node's ID as parent_id and set placement to before or after. To move into a "
+        + "container, pass the container ID, placement at_index, and the zero-based child index. "
+        + "For the document root, use parent_id=null and placement at_index. The user must "
+        + "approve the proposal.",
         JsonSerializer.SerializeToElement(new
         {
             type = "object",
@@ -707,7 +711,8 @@ public class ChatService : IChatService
             {
                 target_id = new { type = "string" },
                 parent_id = new { type = "string" },
-                index = new { type = "integer" }
+                index = new { type = "integer" },
+                placement = new { type = "string", @enum = new[] { "before", "after", "at_index" } }
             },
             required = new[] { "target_id", "index" }
         }));
@@ -734,58 +739,29 @@ public class ChatService : IChatService
             required = new[] { "text" }
         }));
 
-    private static readonly AiTool InsertTextTool = new(
-        "insert_text",
-        "Insert new text into the middle of the document, right after an existing passage. The "
-        + "change is proposed for the user to review, not applied directly.",
+    private static readonly AiTool PrependTextTool = new(
+        "prepend_text",
+        "Add new text to the START of the document. Use when the user asks to add an "
+        + "introduction, title, preface, or other text before the existing content. The change "
+        + "is proposed for the user to review, not applied directly.",
         JsonSerializer.SerializeToElement(new
         {
             type = "object",
             properties = new
             {
-                after_text = new
+                text = new
                 {
                     type = "string",
-                    description = "A short passage copied EXACTLY from the document; the new text "
-                        + "is inserted right after it. Must appear exactly once."
-                },
-                new_text = new
-                {
-                    type = "string",
-                    description = "The new text to insert."
+                    description = "The new text to add at the start."
                 }
             },
-            required = new[] { "after_text", "new_text" }
-        }));
-
-    private static readonly AiTool ReplaceTextTool = new(
-        "replace_text",
-        "Replace an existing passage of the document with new text — use to rewrite, correct, "
-        + "shorten, expand, or (with an empty replacement) delete it. The change is proposed for "
-        + "the user to review, not applied directly.",
-        JsonSerializer.SerializeToElement(new
-        {
-            type = "object",
-            properties = new
-            {
-                old_text = new
-                {
-                    type = "string",
-                    description = "The passage to replace, copied EXACTLY from the document. Must "
-                        + "appear exactly once."
-                },
-                new_text = new
-                {
-                    type = "string",
-                    description = "The replacement text. Leave empty to delete the passage."
-                }
-            },
-            required = new[] { "old_text", "new_text" }
+            required = new[] { "text" }
         }));
 
     // ProposalKind values shared with the client (see EditProposalResponse.Kind).
     private const string ProposalKindReplace = "replace";
     private const string ProposalKindInsert = "insert";
+    private const string ProposalKindPrepend = "prepend";
 
     // A change a content tool proposes, folded into the pending proposal the user
     // reviews. Target is the passage to replace / the anchor to insert after (empty
@@ -803,7 +779,8 @@ public class ChatService : IChatService
         string? ParentId,
         int Index,
         string? NodeType,
-        string? Content);
+        string? Content,
+        string? Placement = null);
 
     // A short human label for a tool call, shown to the user while the tool runs.
     private static string ToolActivityLabel(AiToolCall call)
@@ -822,10 +799,8 @@ public class ChatService : IChatService
 
             case "append_text":
                 return "Proposing an addition";
-            case "insert_text":
-                return "Proposing an insertion";
-            case "replace_text":
-                return "Proposing an edit";
+            case "prepend_text":
+                return "Proposing an introduction";
             case "get_document_structure":
                 return "Reading document structure";
             case "get_document_text":
@@ -857,6 +832,7 @@ public class ChatService : IChatService
         Guid userId,
         string content,
         int contentVersion,
+        string question,
         CancellationToken cancellationToken)
     {
         switch (call.Name)
@@ -919,10 +895,18 @@ public class ChatService : IChatService
                     return ("Error: target_id is required.", null, null);
                 }
 
-                var operation = new StoredOperation("delete", targetId, null, 0, null, null);
+                var requestedTarget = await ResolveDeleteTargetFromQuestionAsync(
+                    documentId, userId, question, cancellationToken);
+                var resolvedTarget = requestedTarget?.Id
+                    ?? await ResolveNodeIdAsync(documentId, userId, targetId, cancellationToken)
+                    ?? targetId;
+                var operation = new StoredOperation("delete", resolvedTarget, null, 0, null, null);
+                var targetLabel = requestedTarget?.Label
+                    ?? await GetNodeLabelAsync(documentId, userId, resolvedTarget, cancellationToken)
+                    ?? targetId;
                 return CreateStructuredProposal(
                     "Proposed deleting the node. The user will review and apply it.",
-                    targetId,
+                    targetLabel,
                     string.Empty,
                     "delete_node",
                     operation,
@@ -938,7 +922,16 @@ public class ChatService : IChatService
                     return ("Error: target_id and index are required.", null, null);
                 }
 
-                var operation = new StoredOperation("move", targetId, parentId, index, null, null);
+                var placement = TryGetOptionalStringArg(call, "placement", out var requestedPlacement)
+                    ? requestedPlacement
+                    : "after";
+                if (placement is not ("before" or "after" or "at_index"))
+                {
+                    return ("Error: placement must be before, after, or at_index.", null, null);
+                }
+
+                var operation = new StoredOperation(
+                    "move", targetId, parentId, index, null, null, placement);
                 var targetLabel = await GetNodeLabelAsync(documentId, userId, targetId, cancellationToken)
                     ?? targetId;
                 var destinationLabel = parentId is null
@@ -986,9 +979,13 @@ public class ChatService : IChatService
                     {
                         return ("Error: the document no longer exists.", null, null);
                     }
-                    if (!DocumentFileTypes.HasSameExtension(document.FileName, newName))
+                    try
                     {
-                        return ("Error: the file extension cannot be changed.", null, null);
+                        newName = DocumentValidation.PreserveExtension(document.FileName, newName);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        return ($"Error: {ex.Message}", null, null);
                     }
 
                     if (!string.Equals(document.FileName, newName, StringComparison.Ordinal))
@@ -1012,81 +1009,22 @@ public class ChatService : IChatService
                     }, null);
                 }
 
+            case "prepend_text":
             case "append_text":
             {
-                if (!TryGetStringArg(call, "text", out var appendText) || appendText.Trim().Length == 0)
+                if (!TryGetStringArg(call, "text", out var addedText) || addedText.Trim().Length == 0)
                 {
                     return ("Error: the text argument was missing or empty.", null, null);
                 }
+                var location = call.Name == "prepend_text" ? "start" : "end";
                 return (
-                    "Proposed adding the text to the end of the document. The user will review and "
+                    $"Proposed adding the text to the {location} of the document. The user will review and "
                     + "apply it — confirm briefly, and don't claim it's already done.",
                     null,
-                    new ProposalDraft(string.Empty, appendText.Trim(), ProposalKindInsert));
-            }
-
-            case "insert_text":
-            {
-                if (!TryGetStringArg(call, "after_text", out var afterText) || afterText.Trim().Length == 0)
-                {
-                    return ("Error: the after_text argument was missing or empty.", null, null);
-                }
-                if (!TryGetStringArg(call, "new_text", out var insertText) || insertText.Trim().Length == 0)
-                {
-                    return ("Error: the new_text argument was missing or empty.", null, null);
-                }
-                var anchor = afterText.Trim();
-                var anchorCount = CountOccurrences(content, anchor);
-                if (anchorCount == 0)
-                {
-                    return ("Error: after_text was not found in the document. Copy a short passage "
-                        + "exactly as it appears.", null, null);
-                }
-                if (anchorCount > 1)
-                {
-                    return ("Error: after_text appears more than once; quote a longer, unique passage.",
-                        null, null);
-                }
-                return (
-                    "Proposed inserting the text after that passage. The user will review and apply "
-                    + "it — confirm briefly, and don't claim it's already done.",
-                    null,
-                    new ProposalDraft(anchor, insertText.Trim(), ProposalKindInsert));
-            }
-
-            case "replace_text":
-            {
-                if (!TryGetStringArg(call, "old_text", out var oldText) || oldText.Trim().Length == 0)
-                {
-                    return ("Error: the old_text argument was missing or empty.", null, null);
-                }
-                // new_text may be empty (a deletion), so only require it to be present.
-                if (!TryGetStringArg(call, "new_text", out var replaceWith))
-                {
-                    return ("Error: the new_text argument was missing.", null, null);
-                }
-                var oldPassage = oldText.Trim();
-                var newPassage = replaceWith.Trim();
-                if (oldPassage == newPassage)
-                {
-                    return ("Error: old_text and new_text are identical; nothing to change.", null, null);
-                }
-                var oldCount = CountOccurrences(content, oldPassage);
-                if (oldCount == 0)
-                {
-                    return ("Error: old_text was not found in the document. Copy a short passage "
-                        + "exactly as it appears.", null, null);
-                }
-                if (oldCount > 1)
-                {
-                    return ("Error: old_text appears more than once; quote a longer, unique passage.",
-                        null, null);
-                }
-                return (
-                    "Proposed replacing that passage. The user will review and apply it — confirm "
-                    + "briefly, and don't claim it's already done.",
-                    null,
-                    new ProposalDraft(oldPassage, newPassage, ProposalKindReplace));
+                    new ProposalDraft(
+                        string.Empty,
+                        addedText.Trim(),
+                        call.Name == "prepend_text" ? ProposalKindPrepend : ProposalKindInsert));
             }
 
             default:
@@ -1197,6 +1135,58 @@ public class ChatService : IChatService
         return node is null ? null : ExtractNodeText(node);
     }
 
+    private async Task<(string Id, string Label)?> ResolveDeleteTargetFromQuestionAsync(
+        Guid documentId,
+        Guid userId,
+        string question,
+        CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+        var document = await db.Documents.FirstOrDefaultAsync(
+            d => d.Id == documentId && d.UserId == userId,
+            cancellationToken);
+        var root = document is null
+            ? null
+            : JsonNode.Parse(document.ContentJson)?.AsObject();
+        if (root is null)
+        {
+            return null;
+        }
+
+        var matches = FindBlockNodes(root)
+            .Select(node => new
+            {
+                Id = node["attrs"]?["id"]?.GetValue<string>(),
+                Label = ExtractNodeText(node)
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Id)
+                && !string.IsNullOrWhiteSpace(item.Label)
+                && question.Contains(item.Label, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return matches.Count == 1
+            ? (matches[0].Id!, matches[0].Label)
+            : null;
+    }
+
+    private async Task<string?> ResolveNodeIdAsync(
+        Guid documentId,
+        Guid userId,
+        string reference,
+        CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+        var document = await db.Documents.FirstOrDefaultAsync(
+            d => d.Id == documentId && d.UserId == userId,
+            cancellationToken);
+        var root = document is null
+            ? null
+            : JsonNode.Parse(document.ContentJson)?.AsObject();
+        return root is null ? null : ResolveNodeReference(root, reference);
+    }
+
     // Extracts a string argument from a tool call, guarding against a missing or
     // non-object Arguments element (a model may emit a call with no arguments).
     private static bool TryGetStringArg(AiToolCall call, string name, out string value)
@@ -1273,7 +1263,12 @@ public class ChatService : IChatService
                 operation.NodeType!,
                 operation.Content ?? string.Empty),
             "delete" => new DeleteDocumentNode(version, operation.TargetId!),
-            "move" => new MoveDocumentNode(version, operation.TargetId!, operation.ParentId, operation.Index),
+            "move" => new MoveDocumentNode(
+                version,
+                operation.TargetId!,
+                operation.ParentId,
+                operation.Index,
+                operation.Placement ?? "after"),
             _ => throw new InvalidOperationException("The saved edit operation is unsupported.")
         };
     }
@@ -1285,7 +1280,7 @@ public class ChatService : IChatService
         var operation = JsonSerializer.Deserialize<StoredOperation>(operationJson)
             ?? throw new InvalidOperationException("The saved edit operation is invalid.");
 
-        if (operation.Kind != "move")
+        if (operation.Kind is not ("replace" or "delete" or "move"))
         {
             return operationJson;
         }
@@ -1298,7 +1293,7 @@ public class ChatService : IChatService
         if (targetId is null)
         {
             throw new InvalidOperationException(
-                "The node to move could not be found. The document may have changed.");
+                "The target node could not be found. The document may have changed.");
         }
 
         if (operation.ParentId is not null && parentId is null)
@@ -1436,32 +1431,25 @@ public class ChatService : IChatService
             "Structured edits are proposed for approval and are never applied immediately.");
         sb.AppendLine(
             "To move a paragraph or section above/below another block, call move_document_node with " +
-            "target_id set to the node being moved and parent_id set to the destination block's ID; " +
-            "the backend interprets that destination as an insert-after anchor. Use parent_id=null " +
-            "only when providing the containing parent and an explicit zero-based index.");
+            "target_id set to the node being moved, parent_id set to the destination block's ID, " +
+            "and placement set to before or after. To move into a container, use placement at_index " +
+            "with the container ID and zero-based index; use parent_id=null for the document root.");
         sb.AppendLine(
             "Never show stable node IDs in your user-facing answer. Use them only as tool arguments; " +
             "refer to the affected section by its readable text or a short description.");
         sb.AppendLine(
-            "- To ADD text to the end (e.g. \"add a summary\", \"append a conclusion\"), call " +
-            "append_text with the new text. This is the usual way to add something.");
+            "- To ADD text to the start, call prepend_text. To ADD text to the end (e.g. \"add a " +
+            "summary\", \"append a conclusion\"), call append_text.");
         sb.AppendLine(
-            "- To CHANGE, rewrite, correct, shorten, expand, or delete existing text, call " +
-            "replace_text with old_text (an exact quote from the document) and new_text (leave " +
-            "new_text empty to delete).");
-        sb.AppendLine(
-            "- To INSERT text in the middle, call insert_text with after_text (an exact quote to " +
-            "insert after) and new_text.");
+            "Use replace_document_node to change or delete an existing paragraph, heading, or code " +
+            "block; use insert_document_node to add a new block anywhere; use delete_document_node " +
+            "to remove a block; and use move_document_node to reorder blocks.");
         sb.AppendLine(
             "- To rename the document, call rename_document.");
         sb.AppendLine(
-            "For replace_text and insert_text, copy the quoted passage VERBATIM from the document " +
-            "(character for character) and keep it short but unique — the tool matches it exactly.");
-        sb.AppendLine(
-            "append_text, insert_text, and replace_text only PROPOSE a change; the user reviews and " +
-            "applies it, so never say the document has been changed — just briefly say what you " +
-            "proposed. Rename applies immediately. Make at most ONE change per reply. For ordinary " +
-            "questions, just answer normally without calling any tool.");
+            "All content changes are proposed for review and approval; never say the document has " +
+            "already changed. Rename applies immediately. Make at most ONE change per reply. For " +
+            "ordinary questions, just answer normally without calling any tool.");
         sb.AppendLine();
         sb.AppendLine($"--- DOCUMENT: {fileName} ---");
         sb.AppendLine(boundedContent);

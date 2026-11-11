@@ -25,4 +25,5 @@ public sealed record MoveDocumentNode(
     int ExpectedContentVersion,
     string TargetId,
     string? ParentId,
-    int Index) : DocumentOperation(ExpectedContentVersion);
+    int Index,
+    string Placement = "after") : DocumentOperation(ExpectedContentVersion);

@@ -14,12 +14,10 @@ public class ChatMessage
 
     public DateTime CreatedAt { get; set; }
 
-    // AI edit proposal (assistant messages only). The model can propose replacing
-    // ProposalTarget (an exact passage of the document) with ProposalReplacement,
-    // or — when ProposalKind is "insert" — inserting ProposalReplacement after
-    // ProposalTarget (an empty target means append to the end). The user then
-    // applies or rejects it. These stay null for ordinary messages; the document
-    // itself is only touched on apply.
+    // AI edit proposal (assistant messages only). Legacy text proposals can
+    // replace ProposalTarget or insert ProposalReplacement after it; an empty
+    // target means append, while "prepend" adds at the start. Structured node
+    // proposals use ProposalOperationJson. The user then applies or rejects it.
     public string? ProposalTarget { get; set; }
 
     public string? ProposalReplacement { get; set; }
@@ -27,8 +25,7 @@ public class ChatMessage
     // One of EditProposalStatus; null when there is no proposal.
     public string? ProposalStatus { get; set; }
 
-    // "replace" (or null, for pre-existing rows) or "insert". Distinguishes a
-    // passage rewrite from an insertion/append at apply time.
+    // "replace", "insert", or "prepend". Null is used by pre-existing rows.
     public string? ProposalKind { get; set; }
 
     // Serialized structured operation captured when the proposal was created.

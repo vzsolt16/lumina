@@ -175,15 +175,19 @@ public sealed class DocumentEditorService : IDocumentEditorService
             : FindNode(root, operation.ParentId, out anchorParent, out anchorIndex)
                 ?? throw new KeyNotFoundException("Parent node not found.");
 
-        // A model commonly interprets "move after node X" as passing X as the
-        // destination. Treat a leaf/block node as an anchor and insert after it
-        // in its containing parent; container nodes retain the explicit
-        // parent/index semantics.
+        // A block node destination is an anchor; container destinations retain
+        // explicit parent/index semantics.
         var insertionIndex = operation.Index;
         if (!CanContainBlockChildren(newParent) && anchorParent is not null)
         {
             newParent = anchorParent;
-            insertionIndex = anchorIndex + 1;
+            insertionIndex = operation.Placement == "before"
+                ? anchorIndex
+                : anchorIndex + 1;
+        }
+        else if (operation.Placement is not ("at_index" or "before" or "after"))
+        {
+            throw new InvalidOperationException("The move placement is invalid.");
         }
 
         if (ReferenceEquals(target, newParent) || ContainsNode(target, newParent))

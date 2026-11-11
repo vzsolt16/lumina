@@ -219,11 +219,7 @@ public class DocumentService : IDocumentService
         var changed = false;
         if (request.FileName is not null)
         {
-            var name = DocumentValidation.GetSafeFileName(request.FileName);
-            if (!DocumentValidation.HasSameExtension(document.FileName, name))
-            {
-                throw new InvalidOperationException("The file extension cannot be changed.");
-            }
+            var name = DocumentValidation.PreserveExtension(document.FileName, request.FileName);
 
             if (!string.Equals(document.FileName, name, StringComparison.Ordinal))
             {

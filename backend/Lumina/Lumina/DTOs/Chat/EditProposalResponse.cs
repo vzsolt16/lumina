@@ -6,8 +6,8 @@ public class EditProposalResponse
 {
     public Guid MessageId { get; set; }
 
-    // The passage to replace, or — for an insert — the anchor to insert after
-    // (empty when appending to the end of the document).
+    // The passage to replace, or — for a legacy insert — the anchor to insert
+    // after. Empty for append/prepend proposals.
     public string Target { get; set; } = string.Empty;
 
     public string Replacement { get; set; } = string.Empty;
@@ -15,8 +15,7 @@ public class EditProposalResponse
     // One of EditProposalStatus ("pending" | "applied" | "rejected").
     public string Status { get; set; } = string.Empty;
 
-    // "replace" (rewrite the target) or "insert" (add Replacement after the
-    // target, or at the end when the target is empty).
+    // "replace", "insert", or "prepend".
     public string Kind { get; set; } = "replace";
 
     public int? ContentVersion { get; set; }
