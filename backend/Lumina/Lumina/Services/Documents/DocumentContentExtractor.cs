@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Xml.Linq;
 using UglyToad.PdfPig;
 
@@ -33,6 +34,27 @@ public sealed class DocumentContentExtractor
         }
 
         return extracted;
+    }
+
+    public async Task<string?> ExtractStructuredAsync(
+        string extension,
+        Stream content,
+        CancellationToken cancellationToken = default)
+    {
+        var extractor = _extractors.FirstOrDefault(e => e.CanExtract(extension));
+        if (extractor is null)
+        {
+            throw new InvalidOperationException("Unsupported document format.");
+        }
+
+        var structured = await extractor.ExtractStructuredAsync(content, cancellationToken);
+        if (structured is not null
+            && Encoding.UTF8.GetByteCount(structured) > MaxExtractedContentSize)
+        {
+            throw new InvalidOperationException("The extracted document content is too large.");
+        }
+
+        return structured;
     }
 }
 
@@ -69,6 +91,7 @@ public sealed class PlainTextContentExtractor : IDocumentContentExtractor
             throw new InvalidOperationException("The text file uses an unsupported encoding.");
         }
     }
+
 }
 
 public sealed class PdfContentExtractor : IDocumentContentExtractor
@@ -142,4 +165,248 @@ public sealed class DocxContentExtractor : IDocumentContentExtractor
             throw new InvalidOperationException("The DOCX file is invalid or could not be read.", ex);
         }
     }
-}
+
+    public async Task<string?> ExtractStructuredAsync(
+        Stream content,
+        CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                using var archive = new ZipArchive(content, ZipArchiveMode.Read, leaveOpen: true);
+                if (archive.Entries.Count > MaxArchiveEntries)
+                {
+                    throw new InvalidOperationException("The DOCX archive contains too many entries.");
+                }
+
+                var entry = archive.GetEntry("word/document.xml")
+                    ?? throw new InvalidOperationException("The DOCX file is missing its document body.");
+                if (entry.Length > MaxEntrySize)
+                {
+                    throw new InvalidOperationException("The DOCX document body is too large.");
+                }
+
+                XNamespace word = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+                var document = LoadXml(archive, entry, cancellationToken);
+                var numbering = LoadNumbering(archive, word, cancellationToken);
+                var paragraphs = document
+                    .Descendants(word + "p")
+                    .Select(paragraph => CreateParagraphInfo(paragraph, word, numbering))
+                    .ToList();
+                var contentNodes = BuildContent(paragraphs);
+
+                return new JsonObject
+                {
+                    ["type"] = "doc",
+                    ["content"] = contentNodes
+                }.ToJsonString();
+            }
+            catch (InvalidOperationException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new InvalidOperationException("The DOCX file is invalid or could not be read.", ex);
+            }
+        }
+
+    private sealed record ParagraphInfo(JsonObject Node, string? ListType, int Level);
+
+    private static XDocument LoadXml(
+        ZipArchive archive,
+        ZipArchiveEntry entry,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var stream = entry.Open();
+        return XDocument.Load(stream);
+    }
+
+    private static Dictionary<string, Dictionary<int, string>> LoadNumbering(
+        ZipArchive archive,
+        XNamespace word,
+        CancellationToken cancellationToken)
+    {
+        var entry = archive.GetEntry("word/numbering.xml");
+        if (entry is null)
+        {
+            return [];
+        }
+
+        var numbering = LoadXml(archive, entry, cancellationToken);
+        var formats = numbering
+            .Descendants(word + "abstractNum")
+            .ToDictionary(
+                abstractNum => (string?)abstractNum.Attribute(word + "abstractNumId") ?? string.Empty,
+                abstractNum => abstractNum
+                    .Elements(word + "lvl")
+                    .ToDictionary(
+                        level => (int?)level.Attribute(word + "ilvl") ?? 0,
+                        level => (string?)level.Element(word + "numFmt")?.Attribute(word + "val")
+                            ?? "bullet"));
+
+        var result = new Dictionary<string, Dictionary<int, string>>();
+        foreach (var num in numbering.Descendants(word + "num"))
+        {
+            var numId = (string?)num.Attribute(word + "numId");
+            var abstractId = (string?)num.Element(word + "abstractNumId")?.Attribute(word + "val");
+            if (numId is null || abstractId is null || !formats.TryGetValue(abstractId, out var levels))
+            {
+                continue;
+            }
+
+            result[numId] = levels;
+        }
+
+        return result;
+    }
+
+    private static ParagraphInfo CreateParagraphInfo(
+        XElement paragraph,
+        XNamespace word,
+        Dictionary<string, Dictionary<int, string>> numbering)
+    {
+        var node = CreateParagraph(paragraph, word);
+        var properties = paragraph.Element(word + "pPr");
+        var numPr = properties?.Element(word + "numPr");
+        var numId = (string?)numPr?.Element(word + "numId")?.Attribute(word + "val");
+        var level = (int?)numPr?.Element(word + "ilvl")?.Attribute(word + "val") ?? 0;
+        if (numId is null
+            || !numbering.TryGetValue(numId, out var levels)
+            || !levels.TryGetValue(level, out var format))
+        {
+            return new ParagraphInfo(node, null, 0);
+        }
+
+        return new ParagraphInfo(
+            node,
+            format == "bullet" ? "bulletList" : "orderedList",
+            level);
+    }
+
+    private static JsonArray BuildContent(IReadOnlyList<ParagraphInfo> paragraphs)
+    {
+        var result = new JsonArray();
+        var index = 0;
+        while (index < paragraphs.Count)
+        {
+            if (paragraphs[index].ListType is null)
+            {
+                result.Add(paragraphs[index].Node);
+                index++;
+                continue;
+            }
+
+            result.Add(BuildList(paragraphs, ref index, paragraphs[index].Level));
+        }
+
+        return result;
+    }
+
+    private static JsonObject BuildList(
+        IReadOnlyList<ParagraphInfo> paragraphs,
+        ref int index,
+        int level)
+    {
+        var listType = paragraphs[index].ListType!;
+        var list = new JsonObject
+        {
+            ["type"] = listType,
+            ["content"] = new JsonArray()
+        };
+        var items = (JsonArray)list["content"]!;
+
+        while (index < paragraphs.Count)
+        {
+            var paragraph = paragraphs[index];
+            if (paragraph.ListType is null || paragraph.Level < level)
+            {
+                break;
+            }
+            if (paragraph.Level > level)
+            {
+                if (items.Count == 0)
+                {
+                    break;
+                }
+
+                ((JsonObject)items[items.Count - 1]!)["content"]!.AsArray()
+                    .Add(BuildList(paragraphs, ref index, paragraph.Level));
+                continue;
+            }
+            if (paragraph.ListType != listType)
+            {
+                break;
+            }
+
+            var item = new JsonObject
+            {
+                ["type"] = "listItem",
+                ["content"] = new JsonArray(paragraph.Node)
+            };
+            items.Add(item);
+            index++;
+        }
+
+        return list;
+    }
+
+    private static JsonObject CreateParagraph(XElement paragraph, XNamespace word)
+        {
+            var result = new JsonObject
+            {
+                ["type"] = "paragraph",
+                ["content"] = new JsonArray()
+            };
+            var content = (JsonArray)result["content"]!;
+
+            foreach (var run in paragraph.Elements(word + "r"))
+            {
+                var runProperties = run.Element(word + "rPr");
+                var marks = new JsonArray();
+                if (runProperties?.Element(word + "b") is not null)
+                {
+                    marks.Add(new JsonObject { ["type"] = "bold" });
+                }
+                if (runProperties?.Element(word + "i") is not null)
+                {
+                    marks.Add(new JsonObject { ["type"] = "italic" });
+                }
+                if (runProperties?.Element(word + "u") is not null)
+                {
+                    marks.Add(new JsonObject { ["type"] = "underline" });
+                }
+                if (runProperties?.Element(word + "strike") is not null)
+                {
+                    marks.Add(new JsonObject { ["type"] = "strike" });
+                }
+
+                foreach (var text in run.Elements(word + "t"))
+                {
+                    var textNode = new JsonObject
+                    {
+                        ["type"] = "text",
+                        ["text"] = text.Value
+                    };
+                    if (marks.Count > 0)
+                    {
+                        textNode["marks"] = marks.DeepClone();
+                    }
+
+                    content.Add(textNode);
+                }
+
+                foreach (var breakElement in run.Elements(word + "br"))
+                {
+                    content.Add(new JsonObject { ["type"] = "hardBreak" });
+                }
+            }
+
+            if (content.Count == 0)
+            {
+                result.Remove("content");
+            }
+
+            return result;
+        }
+    }

@@ -66,6 +66,26 @@ public sealed class DocumentEditorService : IDocumentEditorService
         return ToResponse(document);
     }
 
+    public async Task ValidateOperationAsync(
+        Guid documentId,
+        Guid userId,
+        DocumentOperation operation,
+        CancellationToken cancellationToken = default)
+    {
+        var document = await _db.Documents
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("Document not found.");
+
+        if (document.ContentVersion != operation.ExpectedContentVersion)
+        {
+            throw new InvalidOperationException(
+                "The document changed before this operation was validated. Reload it and try again.");
+        }
+
+        var root = JsonNode.Parse(_converter.Normalize(document.ContentJson))!.AsObject();
+        ApplyOperation(root, operation);
+    }
+
     private static void ApplyOperation(JsonObject root, DocumentOperation operation)
     {
         switch (operation)
@@ -96,7 +116,10 @@ public sealed class DocumentEditorService : IDocumentEditorService
         if (type is not ("paragraph" or "heading" or "codeBlock"))
         {
             throw new InvalidOperationException(
-                "Only paragraph, heading, and code block nodes support text replacement.");
+                $"Node '{operation.TargetId}' is a {type ?? "unknown"} node. "
+                + "Only paragraph, heading, and code block nodes support text replacement. "
+                + "Inspect the node's children and replace a child text-bearing block, "
+                + "or use move_document_node to reorder the existing node.");
         }
 
         var marks = FindFirstTextNode(target)?["marks"]?.DeepClone();
@@ -175,10 +198,31 @@ public sealed class DocumentEditorService : IDocumentEditorService
             : FindNode(root, operation.ParentId, out anchorParent, out anchorIndex)
                 ?? throw new KeyNotFoundException("Parent node not found.");
 
+        var targetType = target["type"]?.GetValue<string>();
+        var destinationType = newParent["type"]?.GetValue<string>();
+        if (destinationType is "bulletList" or "orderedList"
+            && targetType != "listItem")
+        {
+            throw new InvalidOperationException(
+                $"A {destinationType} can only contain listItem nodes, but the target is "
+                + $"{targetType ?? "unknown"}. To reorder a list item, target the listItem "
+                + "node and use the list container as parent_id.");
+        }
+
         // A block node destination is an anchor; container destinations retain
         // explicit parent/index semantics.
         var insertionIndex = operation.Index;
-        if (!CanContainBlockChildren(newParent) && anchorParent is not null)
+        if (CanContainBlockChildren(newParent) && operation.ParentId is not null)
+        {
+            if (operation.Placement != "at_index")
+            {
+                throw new InvalidOperationException(
+                    $"The destination '{operation.ParentId}' is a {newParent["type"]} container. "
+                    + "Container moves require placement 'at_index' and a zero-based child index. "
+                    + "Use a sibling node as parent_id for 'before' or 'after'.");
+            }
+        }
+        else if (anchorParent is not null)
         {
             newParent = anchorParent;
             insertionIndex = operation.Placement == "before"

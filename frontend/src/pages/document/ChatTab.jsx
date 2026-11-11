@@ -340,6 +340,18 @@ export default function ChatTab() {
         complete: () => {
           setStreaming(false)
           subscriptionRef.current = null
+          setMessages((prev) => {
+            const last = prev[prev.length - 1]
+            if (
+              last?.role === 'assistant'
+              && !last.content
+              && !last.proposal
+              && !(last.activities?.length > 0)
+            ) {
+              return prev.slice(0, -1)
+            }
+            return prev
+          })
         },
         error: (err) => {
           setStreaming(false)
@@ -578,7 +590,7 @@ export default function ChatTab() {
                             )}
                             {m.proposal.replacement && (
                               <>
-                                <div className="chat-proposal-caption">// TO AFTER</div>
+                                <div className="chat-proposal-caption">// TO</div>
                                 <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
                               </>
                             )}

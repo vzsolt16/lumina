@@ -128,6 +128,156 @@ public class DocumentEditorServiceTests
         Assert.Equal("Two\nOne\nThree", result.Content);
     }
 
+    [Fact]
+    public async Task ValidateOperation_RejectsReplacingAListContainerWithRecoveryGuidance()
+    {
+        await using var db = CreateDb();
+        var converter = new ProseMirrorDocumentConverter();
+        var userId = Guid.NewGuid();
+        var document = CreateDocument(userId, converter.Normalize("""
+            {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "bulletList",
+                  "attrs": {"id": "node-11111111111111111111111111111111"},
+                  "content": [
+                    {
+                      "type": "listItem",
+                      "attrs": {"id": "node-22222222222222222222222222222222"},
+                      "content": [
+                        {
+                          "type": "paragraph",
+                          "attrs": {"id": "node-33333333333333333333333333333333"},
+                          "content": [{"type": "text", "text": "pear"}]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+            """), converter);
+        db.Documents.Add(document);
+        await db.SaveChangesAsync();
+
+        var service = new DocumentEditorService(db, converter);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ValidateOperationAsync(
+                document.Id,
+                userId,
+                new ReplaceDocumentNode(
+                    1,
+                    "node-11111111111111111111111111111111",
+                    "1. pear")));
+
+        Assert.Contains("bulletList", error.Message);
+        Assert.Contains("move_document_node", error.Message);
+    }
+
+    [Fact]
+    public async Task ValidateOperation_RejectsSiblingPlacementForAListContainer()
+    {
+        await using var db = CreateDb();
+        var converter = new ProseMirrorDocumentConverter();
+        var userId = Guid.NewGuid();
+        var document = CreateDocument(userId, converter.Normalize("""
+            {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "orderedList",
+                  "attrs": {"id": "node-11111111111111111111111111111111"},
+                  "content": [
+                    {
+                      "type": "listItem",
+                      "attrs": {"id": "node-22222222222222222222222222222222"},
+                      "content": [
+                        {
+                          "type": "paragraph",
+                          "attrs": {"id": "node-33333333333333333333333333333333"},
+                          "content": [{"type": "text", "text": "pear"}]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+            """), converter);
+        db.Documents.Add(document);
+        await db.SaveChangesAsync();
+
+        var service = new DocumentEditorService(db, converter);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ValidateOperationAsync(
+                document.Id,
+                userId,
+                new MoveDocumentNode(
+                    1,
+                    "node-22222222222222222222222222222222",
+                    "node-11111111111111111111111111111111",
+                    0,
+                    "after")));
+
+        Assert.Contains("at_index", error.Message);
+        Assert.Contains("container", error.Message);
+    }
+
+    [Fact]
+    public async Task ValidateOperation_RejectsMovingNonListItemIntoAList()
+    {
+        await using var db = CreateDb();
+        var converter = new ProseMirrorDocumentConverter();
+        var userId = Guid.NewGuid();
+        var document = CreateDocument(userId, converter.Normalize("""
+            {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "orderedList",
+                  "attrs": {"id": "node-11111111111111111111111111111111"},
+                  "content": [
+                    {
+                      "type": "listItem",
+                      "attrs": {"id": "node-22222222222222222222222222222222"},
+                      "content": [
+                        {
+                          "type": "paragraph",
+                          "attrs": {"id": "node-33333333333333333333333333333333"},
+                          "content": [{"type": "text", "text": "pear"}]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "attrs": {"id": "node-44444444444444444444444444444444"},
+                  "content": [{"type": "text", "text": "outside"}]
+                }
+              ]
+            }
+            """), converter);
+        db.Documents.Add(document);
+        await db.SaveChangesAsync();
+
+        var service = new DocumentEditorService(db, converter);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ValidateOperationAsync(
+                document.Id,
+                userId,
+                new MoveDocumentNode(
+                    1,
+                    "node-44444444444444444444444444444444",
+                    "node-11111111111111111111111111111111",
+                    0,
+                    "at_index")));
+
+        Assert.Contains("listItem", error.Message);
+        Assert.Contains("parent_id", error.Message);
+    }
+
     private static LuminaDbContext CreateDb()
     {
         var options = new DbContextOptionsBuilder<LuminaDbContext>()

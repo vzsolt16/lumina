@@ -161,6 +161,34 @@ public class DocumentIntegrationTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Upload_Docx_PreservesInlineBoldFormatting()
+    {
+        var doc = await UploadAsync("formatted.docx", CreateFormattedDocx());
+
+        var response = await _client.GetFromJsonAsync<DocumentDetailResponse>(
+            $"/api/documents/{doc.Id}");
+
+        Assert.Equal("Normal Bold", response!.Content);
+        Assert.Contains(
+            "\"marks\":[{\"type\":\"bold\"}]",
+            response.ContentJson,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Upload_Docx_PreservesNumberedLists()
+    {
+        var doc = await UploadAsync("list.docx", CreateNumberedListDocx());
+
+        var response = await _client.GetFromJsonAsync<DocumentDetailResponse>(
+            $"/api/documents/{doc.Id}");
+
+        Assert.Equal("First\nSecond", response!.Content);
+        Assert.Contains("\"type\":\"orderedList\"", response.ContentJson, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"listItem\"", response.ContentJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Upload_Pdf_ExtractsText()
     {
         var doc = await UploadAsync("sample.pdf", CreatePdf("Hello PDF"));
@@ -263,6 +291,56 @@ public class DocumentIntegrationTests : IClassFixture<IntegrationTestFactory>
             writer.Write(
                 $"<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
                 $"<w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:body></w:document>");
+        }
+
+        return output.ToArray();
+    }
+
+    private static byte[] CreateFormattedDocx()
+    {
+        using var output = new MemoryStream();
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var entry = archive.CreateEntry("word/document.xml");
+            using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
+            writer.Write(
+                "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
+                "<w:body><w:p>" +
+                "<w:r><w:t>Normal </w:t></w:r>" +
+                "<w:r><w:rPr><w:b/></w:rPr><w:t>Bold</w:t></w:r>" +
+                "</w:p></w:body></w:document>");
+        }
+
+        return output.ToArray();
+    }
+
+    private static byte[] CreateNumberedListDocx()
+    {
+        using var output = new MemoryStream();
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var documentEntry = archive.CreateEntry("word/document.xml");
+            using (var writer = new StreamWriter(documentEntry.Open(), Encoding.UTF8))
+            {
+                writer.Write(
+                    "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
+                    "<w:body>" +
+                    "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr>" +
+                    "<w:r><w:t>First</w:t></w:r></w:p>" +
+                    "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr>" +
+                    "<w:r><w:t>Second</w:t></w:r></w:p>" +
+                    "</w:body></w:document>");
+            }
+
+            var numberingEntry = archive.CreateEntry("word/numbering.xml");
+            using var numberingWriter = new StreamWriter(numberingEntry.Open(), Encoding.UTF8);
+            numberingWriter.Write(
+                "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
+                "<w:abstractNum w:abstractNumId=\"0\">" +
+                "<w:lvl w:ilvl=\"0\"><w:numFmt w:val=\"decimal\"/></w:lvl>" +
+                "</w:abstractNum>" +
+                "<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>" +
+                "</w:numbering>");
         }
 
         return output.ToArray();

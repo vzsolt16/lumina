@@ -238,7 +238,7 @@ public class ChatService : IChatService
             // produce its final answer. Loop until a turn makes no tool calls (the
             // visible answer). The cap is a backstop against a model that never
             // stops calling tools.
-            const int maxTurns = 3;
+            const int maxTurns = 5;
             for (var turn = 0; turn < maxTurns; turn++)
             {
                 var toolCalls = new List<AiToolCall>();
@@ -288,6 +288,7 @@ public class ChatService : IChatService
                 // and feed the results back so the next turn can answer with them.
                 messages.Add(new AiMessage("assistant", rawTurnText.ToString(), ToolCalls: toolCalls));
 
+                var stopAfterProposal = false;
                 foreach (var call in toolCalls)
                 {
                     // Surface the tool call so the UI can show progress (e.g.
@@ -329,6 +330,7 @@ public class ChatService : IChatService
                                 ,
                                 ContentVersion = draft.ContentVersion
                             };
+                            stopAfterProposal = true;
                         }
                     }
 
@@ -348,6 +350,13 @@ public class ChatService : IChatService
                     {
                         yield return ChatStreamEvent.ForProposal(proposalEvent);
                     }
+                }
+
+                // Once a valid proposal is visible, approval is now the user's
+                // decision. Do not spend another model turn re-checking it.
+                if (stopAfterProposal)
+                {
+                    break;
                 }
             }
 
@@ -702,6 +711,11 @@ public class ChatService : IChatService
         "Propose moving an existing block node. To move before or after another block node, pass "
         + "that node's ID as parent_id and set placement to before or after. To move into a "
         + "container, pass the container ID, placement at_index, and the zero-based child index. "
+        + "For reordering a bullet or numbered list item, target the listItem node, use the "
+        + "bulletList or orderedList node as parent_id, and use at_index with the desired "
+        + "zero-based insertion index after the target is removed (for the last position, use "
+        + "the original list item count minus one, not the count after removal); "
+        + "never use before or after with the list container. "
         + "For the document root, use parent_id=null and placement at_index. The user must "
         + "approve the proposal.",
         JsonSerializer.SerializeToElement(new
@@ -858,6 +872,17 @@ public class ChatService : IChatService
                     0,
                     null,
                     newText);
+                var validationError = await ValidateProposedOperationAsync(
+                    documentId,
+                    userId,
+                    operation,
+                    contentVersion,
+                    cancellationToken);
+                if (validationError is not null)
+                {
+                    return (validationError, null, null);
+                }
+
                 return CreateStructuredProposal(
                     "Proposed replacing the node text. The user will review and apply it.",
                     targetId,
@@ -879,6 +904,17 @@ public class ChatService : IChatService
 
                 var operation = new StoredOperation(
                     "insert", null, parentId, index, nodeType, nodeContent);
+                var validationError = await ValidateProposedOperationAsync(
+                    documentId,
+                    userId,
+                    operation,
+                    contentVersion,
+                    cancellationToken);
+                if (validationError is not null)
+                {
+                    return (validationError, null, null);
+                }
+
                 return CreateStructuredProposal(
                     "Proposed inserting the new node. The user will review and apply it.",
                     parentId ?? string.Empty,
@@ -901,6 +937,17 @@ public class ChatService : IChatService
                     ?? await ResolveNodeIdAsync(documentId, userId, targetId, cancellationToken)
                     ?? targetId;
                 var operation = new StoredOperation("delete", resolvedTarget, null, 0, null, null);
+                var validationError = await ValidateProposedOperationAsync(
+                    documentId,
+                    userId,
+                    operation,
+                    contentVersion,
+                    cancellationToken);
+                if (validationError is not null)
+                {
+                    return (validationError, null, null);
+                }
+
                 var targetLabel = requestedTarget?.Label
                     ?? await GetNodeLabelAsync(documentId, userId, resolvedTarget, cancellationToken)
                     ?? targetId;
@@ -932,12 +979,26 @@ public class ChatService : IChatService
 
                 var operation = new StoredOperation(
                     "move", targetId, parentId, index, null, null, placement);
+                var validationError = await ValidateProposedOperationAsync(
+                    documentId,
+                    userId,
+                    operation,
+                    contentVersion,
+                    cancellationToken);
+                if (validationError is not null)
+                {
+                    return (validationError, null, null);
+                }
+
                 var targetLabel = await GetNodeLabelAsync(documentId, userId, targetId, cancellationToken)
                     ?? targetId;
-                var destinationLabel = parentId is null
-                    ? "the beginning of the document"
-                    : await GetNodeLabelAsync(documentId, userId, parentId, cancellationToken)
-                        ?? parentId;
+                var destinationLabel = await GetMoveDestinationLabelAsync(
+                    documentId,
+                    userId,
+                    parentId,
+                    index,
+                    placement,
+                    cancellationToken);
                 return CreateStructuredProposal(
                     "Proposed moving the node. The user will review and apply it.",
                     targetLabel,
@@ -1029,6 +1090,35 @@ public class ChatService : IChatService
 
             default:
                 return ($"Error: unknown tool '{call.Name}'.", null, null);
+        }
+    }
+
+    private async Task<string?> ValidateProposedOperationAsync(
+        Guid documentId,
+        Guid userId,
+        StoredOperation operation,
+        int contentVersion,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _documentEditor.ValidateOperationAsync(
+                documentId,
+                userId,
+                DeserializeOperation(JsonSerializer.Serialize(operation), contentVersion),
+                cancellationToken);
+            return null;
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return $"Error: {ex.Message}";
+        }
+        catch (InvalidOperationException ex)
+        {
+            return "Error: the proposed document operation is invalid. "
+                + ex.Message
+                + " Review this validation error, inspect the document structure if needed, "
+                + "and retry with a compatible operation. Do not claim the change was completed.";
         }
     }
 
@@ -1132,7 +1222,64 @@ public class ChatService : IChatService
             node = resolved is null ? null : FindJsonNode(root, resolved);
         }
 
-        return node is null ? null : ExtractNodeText(node);
+        if (node is null)
+        {
+            return null;
+        }
+
+        var label = ExtractNodeText(node);
+        if (label.Length > 120)
+        {
+            label = label[..120].TrimEnd() + "…";
+        }
+
+        return label;
+    }
+
+    private async Task<string> GetMoveDestinationLabelAsync(
+        Guid documentId,
+        Guid userId,
+        string? parentId,
+        int index,
+        string placement,
+        CancellationToken cancellationToken)
+    {
+        if (parentId is null)
+        {
+            return $"position {index + 1} in the document";
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+        var document = await db.Documents.FirstOrDefaultAsync(
+            d => d.Id == documentId && d.UserId == userId,
+            cancellationToken);
+        if (document is null)
+        {
+            return $"position {index + 1}";
+        }
+
+        var root = JsonNode.Parse(document.ContentJson)?.AsObject();
+        var parent = root is null ? null : FindJsonNode(root, parentId);
+        if (parent is null)
+        {
+            return $"position {index + 1}";
+        }
+
+        var type = parent["type"]?.GetValue<string>();
+        if (placement == "at_index" && type is ("orderedList" or "bulletList"))
+        {
+            var listName = type == "orderedList" ? "numbered list" : "bulleted list";
+            return $"position {index + 1} in the {listName}";
+        }
+
+        var label = ExtractNodeText(parent);
+        return placement switch
+        {
+            "before" => $"before {label}",
+            "after" => $"after {label}",
+            _ => $"position {index + 1} in {type ?? "the document"}"
+        };
     }
 
     private async Task<(string Id, string Label)?> ResolveDeleteTargetFromQuestionAsync(
@@ -1360,7 +1507,11 @@ public class ChatService : IChatService
     {
         var builder = new StringBuilder();
         AppendNodeText(node, builder);
-        return builder.ToString().Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return builder.ToString()
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Replace("  ", " | ", StringComparison.Ordinal)
+            .Trim();
     }
 
     private static void AppendNodeText(JsonObject node, StringBuilder builder)
@@ -1373,8 +1524,19 @@ public class ChatService : IChatService
 
         if (node["content"] is JsonArray content)
         {
-            foreach (var child in content.OfType<JsonObject>())
+            for (var index = 0; index < content.Count; index++)
             {
+                if (content[index] is not JsonObject child)
+                {
+                    continue;
+                }
+
+                var nodeType = node["type"]?.GetValue<string>();
+                if (index > 0 && nodeType is not ("paragraph" or "heading"))
+                {
+                    builder.Append(" | ");
+                }
+
                 AppendNodeText(child, builder);
             }
         }
@@ -1432,8 +1594,11 @@ public class ChatService : IChatService
         sb.AppendLine(
             "To move a paragraph or section above/below another block, call move_document_node with " +
             "target_id set to the node being moved, parent_id set to the destination block's ID, " +
-            "and placement set to before or after. To move into a container, use placement at_index " +
-            "with the container ID and zero-based index; use parent_id=null for the document root.");
+            "and placement set to before or after. To reorder a bullet or numbered list item, " +
+            "target the listItem node, use the list container as parent_id, and use placement " +
+            "at_index with the desired zero-based position. To move into any other container, " +
+            "also use placement at_index with the container ID and zero-based index; use " +
+            "parent_id=null for the document root.");
         sb.AppendLine(
             "Never show stable node IDs in your user-facing answer. Use them only as tool arguments; " +
             "refer to the affected section by its readable text or a short description.");
@@ -1448,7 +1613,9 @@ public class ChatService : IChatService
             "- To rename the document, call rename_document.");
         sb.AppendLine(
             "All content changes are proposed for review and approval; never say the document has " +
-            "already changed. Rename applies immediately. Make at most ONE change per reply. For " +
+            "already changed. After a content tool returns a proposal, stop calling tools and give " +
+            "a brief confirmation that the proposal is ready for review. Rename applies immediately. "
+            + "Make at most ONE change per reply. For " +
             "ordinary questions, just answer normally without calling any tool.");
         sb.AppendLine();
         sb.AppendLine($"--- DOCUMENT: {fileName} ---");

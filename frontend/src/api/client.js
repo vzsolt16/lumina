@@ -22,7 +22,9 @@ async function handle(res) {
     } catch {
       /* ignore */
     }
-    throw new Error(detail || `Request failed (${res.status})`)
+    const error = new Error(detail || `Request failed (${res.status})`)
+    error.status = res.status
+    throw error
   }
   if (res.status === 204) return null
   const text = await res.text()
@@ -147,7 +149,7 @@ export function deleteDocument(id) {
  * Update a document's name stem and/or content. The existing extension is
  * immutable and must be preserved by callers.
  * @param {string} id
- * @param {{ fileName?: string, content?: string }} payload
+ * @param {{ fileName?: string, content?: string, contentJson?: object|string, expectedContentVersion?: number }} payload
  * @returns {Promise<{ id, fileName, fileSize, uploadedAt, updatedAt, content }>}
  */
 export function updateDocument(id, payload) {

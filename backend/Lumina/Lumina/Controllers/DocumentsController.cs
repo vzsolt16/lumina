@@ -112,6 +112,11 @@ public class DocumentsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
+            if (ex.Message.StartsWith("The document changed before", StringComparison.Ordinal))
+            {
+                return Conflict(ex.Message);
+            }
+
             return BadRequest(ex.Message);
         }
     }

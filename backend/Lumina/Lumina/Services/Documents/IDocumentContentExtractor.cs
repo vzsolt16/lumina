@@ -5,4 +5,9 @@ public interface IDocumentContentExtractor
     bool CanExtract(string extension);
 
     Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken = default);
+
+    Task<string?> ExtractStructuredAsync(
+        Stream content,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>(null);
 }

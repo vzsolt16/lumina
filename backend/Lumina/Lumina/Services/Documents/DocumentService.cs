@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Lumina.Data;
 using Lumina.DTOs.Document;
 using Lumina.Models;
@@ -47,7 +48,15 @@ public class DocumentService : IDocumentService
         await uploadStream.CopyToAsync(buffer, cancellationToken);
         buffer.Position = 0;
 
-        var content = await _contentExtractor.ExtractAsync(extension, buffer, cancellationToken);
+        buffer.Position = 0;
+        var structuredContent = await _contentExtractor.ExtractStructuredAsync(
+            extension,
+            buffer,
+            cancellationToken);
+        buffer.Position = 0;
+        var content = structuredContent is null
+            ? await _contentExtractor.ExtractAsync(extension, buffer, cancellationToken)
+            : _contentConverter.ExtractPlainText(structuredContent);
         var document = new Document
         {
             Id = Guid.NewGuid(),
@@ -58,7 +67,9 @@ public class DocumentService : IDocumentService
             OriginalStorageKey = $"documents/{userId:D}/{Guid.NewGuid():N}{extension}",
             OriginalContentType = GetServerContentType(extension),
             Content = content,
-            ContentJson = _contentConverter.CreateFromPlainText(content),
+            ContentJson = structuredContent is null
+                ? _contentConverter.CreateFromPlainText(content)
+                : _contentConverter.Normalize(structuredContent),
             FileSize = file.Length,
             ContentSize = Encoding.UTF8.GetByteCount(content),
             ContentVersion = 1,
@@ -231,6 +242,36 @@ public class DocumentService : IDocumentService
         if (request.Content is not null)
         {
             changed |= DocumentContentMutation.Apply(document, request.Content, _contentConverter);
+        }
+
+        if (request.ContentJson is not null)
+        {
+            if (request.ExpectedContentVersion is not null
+                && request.ExpectedContentVersion.Value != document.ContentVersion)
+            {
+                throw new InvalidOperationException(
+                    "The document changed before this update was applied. Reload it and try again.");
+            }
+
+            string normalized;
+            try
+            {
+                normalized = _contentConverter.Normalize(request.ContentJson);
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException("Structured document content is invalid.", ex);
+            }
+
+            var content = _contentConverter.ExtractPlainText(normalized);
+            if (!string.Equals(document.ContentJson, normalized, StringComparison.Ordinal))
+            {
+                document.ContentJson = normalized;
+                document.Content = content;
+                document.ContentSize = Encoding.UTF8.GetByteCount(content);
+                document.ContentVersion++;
+                changed = true;
+            }
         }
 
         if (changed)

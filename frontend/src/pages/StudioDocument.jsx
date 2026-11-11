@@ -20,6 +20,13 @@ export default function StudioDocument() {
   const { docId } = useParams()
   const [doc, setDoc] = useState(null)
   const [error, setError] = useState('')
+  const [unsavedContent, setUnsavedContent] = useState(false)
+
+  function confirmNavigation(event) {
+    if (unsavedContent && !window.confirm('You have unsaved document changes. Leave this tab?')) {
+      event.preventDefault()
+    }
+  }
 
   // Jobs come from the app-level registry, keyed by document. They keep running
   // and streaming progress across tab and document navigation; the registry
@@ -48,7 +55,7 @@ export default function StudioDocument() {
 
       <div className="studio">
         <div className="doc-ws-head">
-          <Link to="/studio" className="doc-back">‹ LIBRARY</Link>
+          <Link to="/studio" className="doc-back" onClick={confirmNavigation}>‹ LIBRARY</Link>
           <div className="doc-ws-title">
             <span className="doc-card-icon">
               <FileIcon size={20} />
@@ -65,6 +72,7 @@ export default function StudioDocument() {
             <NavLink
               key={to}
               to={to}
+              onClick={confirmNavigation}
               className={({ isActive }) => `doc-tab${isActive ? ' active' : ''}`}
             >
               <Icon size={16} />
@@ -74,7 +82,15 @@ export default function StudioDocument() {
         </div>
 
         <div className="doc-tab-body">
-          <Outlet context={{ flashcard, quiz, doc, onDocUpdated: setDoc }} />
+          <Outlet
+            context={{
+              flashcard,
+              quiz,
+              doc,
+              onDocUpdated: setDoc,
+              onContentDirtyChange: setUnsavedContent,
+            }}
+          />
         </div>
       </div>
 
