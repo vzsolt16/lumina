@@ -49,14 +49,17 @@ public class DocumentService : IDocumentService
         buffer.Position = 0;
 
         buffer.Position = 0;
-        var structuredContent = await _contentExtractor.ExtractStructuredAsync(
+        var extractedDocument = await _contentExtractor.ExtractStructuredAsync(
             extension,
             buffer,
             cancellationToken);
         buffer.Position = 0;
-        var content = structuredContent is null
+        var content = extractedDocument?.ContentJson is null
             ? await _contentExtractor.ExtractAsync(extension, buffer, cancellationToken)
-            : _contentConverter.ExtractPlainText(structuredContent);
+            : _contentConverter.ExtractPlainText(extractedDocument.ContentJson);
+        var contentJson = extractedDocument?.ContentJson is null
+            ? _contentConverter.CreateFromPlainText(content)
+            : extractedDocument.ContentJson;
         var document = new Document
         {
             Id = Guid.NewGuid(),
@@ -67,9 +70,7 @@ public class DocumentService : IDocumentService
             OriginalStorageKey = $"documents/{userId:D}/{Guid.NewGuid():N}{extension}",
             OriginalContentType = GetServerContentType(extension),
             Content = content,
-            ContentJson = structuredContent is null
-                ? _contentConverter.CreateFromPlainText(content)
-                : _contentConverter.Normalize(structuredContent),
+            ContentJson = _contentConverter.Normalize(contentJson),
             FileSize = file.Length,
             ContentSize = Encoding.UTF8.GetByteCount(content),
             ContentVersion = 1,
@@ -77,11 +78,38 @@ public class DocumentService : IDocumentService
             UploadedAt = DateTime.UtcNow
         };
 
+        var savedAssetKeys = new List<string>();
         buffer.Position = 0;
         try
         {
             await _fileStorage.SaveAsync(document.OriginalStorageKey, buffer, cancellationToken);
             _db.Documents.Add(document);
+            if (extractedDocument is not null)
+            {
+                foreach (var extractedAsset in extractedDocument.Assets)
+                {
+                    var asset = new DocumentAsset
+                    {
+                        Id = Guid.NewGuid(),
+                        DocumentId = document.Id,
+                        FileName = Path.GetFileName(extractedAsset.FileName),
+                        StorageKey = $"documents/{userId:D}/assets/{Guid.NewGuid():N}{Path.GetExtension(extractedAsset.FileName)}",
+                        ContentType = extractedAsset.ContentType,
+                        FileSize = extractedAsset.Content.LongLength,
+                        Width = extractedAsset.Width,
+                        Height = extractedAsset.Height,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    await using var assetStream = new MemoryStream(extractedAsset.Content, writable: false);
+                    await _fileStorage.SaveAsync(asset.StorageKey, assetStream, cancellationToken);
+                    savedAssetKeys.Add(asset.StorageKey);
+                    document.ContentJson = document.ContentJson.Replace(
+                        extractedAsset.ReferenceId,
+                        asset.Id.ToString(),
+                        StringComparison.Ordinal);
+                    _db.DocumentAssets.Add(asset);
+                }
+            }
             await _db.SaveChangesAsync(cancellationToken);
             return document;
         }
@@ -97,6 +125,21 @@ public class DocumentService : IDocumentService
                     cleanupException,
                     "Failed to clean up original file {StorageKey} after upload failure.",
                     document.OriginalStorageKey);
+            }
+
+            foreach (var key in savedAssetKeys)
+            {
+                try
+                {
+                    await _fileStorage.DeleteAsync(key, CancellationToken.None);
+                }
+                catch (Exception cleanupException)
+                {
+                    _logger.LogError(
+                        cleanupException,
+                        "Failed to clean up extracted asset {StorageKey} after upload failure.",
+                        key);
+                }
             }
 
             throw;
@@ -189,6 +232,11 @@ public class DocumentService : IDocumentService
             return false;
         }
 
+        var assetKeys = await _db.DocumentAssets
+            .Where(a => a.DocumentId == id)
+            .Select(a => a.StorageKey)
+            .ToListAsync(cancellationToken);
+
         _db.Documents.Remove(document);
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -207,6 +255,18 @@ public class DocumentService : IDocumentService
                     document.OriginalStorageKey);
                 throw new InvalidOperationException(
                     "The document was deleted, but its original file could not be removed.", ex);
+            }
+        }
+
+        foreach (var key in assetKeys)
+        {
+            try
+            {
+                await _fileStorage.DeleteAsync(key, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to clean up document asset {StorageKey}.", key);
             }
         }
 

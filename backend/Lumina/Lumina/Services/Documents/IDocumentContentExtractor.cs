@@ -6,8 +6,8 @@ public interface IDocumentContentExtractor
 
     Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken = default);
 
-    Task<string?> ExtractStructuredAsync(
+    Task<ExtractedDocument?> ExtractStructuredAsync(
         Stream content,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<string?>(null);
+        Task.FromResult<ExtractedDocument?>(null);
 }

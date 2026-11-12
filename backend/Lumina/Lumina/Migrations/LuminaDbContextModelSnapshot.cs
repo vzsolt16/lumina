@@ -215,6 +215,46 @@ namespace Lumina.Migrations
                     b.ToTable("Documents");
                 });
 
+            modelBuilder.Entity("Lumina.Models.DocumentAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("FileSize")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("DocumentAssets");
+                });
+
             modelBuilder.Entity("Lumina.Models.Flashcard", b =>
                 {
                     b.Property<Guid>("Id")
@@ -592,6 +632,17 @@ namespace Lumina.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Lumina.Models.DocumentAsset", b =>
+                {
+                    b.HasOne("Lumina.Models.Document", "Document")
+                        .WithMany("Assets")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("Lumina.Models.Flashcard", b =>
                 {
                     b.HasOne("Lumina.Models.Document", "Document")
@@ -743,6 +794,8 @@ namespace Lumina.Migrations
 
             modelBuilder.Entity("Lumina.Models.Document", b =>
                 {
+                    b.Navigation("Assets");
+
                     b.Navigation("Conversations");
 
                     b.Navigation("Flashcards");

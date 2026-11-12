@@ -74,4 +74,25 @@ public class DocumentContextBuilderTests
         Assert.Contains("[node-", result);
         Assert.DoesNotContain("\"content\"", result);
     }
+
+    [Fact]
+    public async Task StructureOutlineIncludesImageAssetMetadata()
+    {
+        var converter = new ProseMirrorDocumentConverter();
+        var json = converter.Normalize("""
+            {
+              "type":"doc",
+              "content":[
+                {"type":"image","attrs":{"assetId":"asset-123","width":640,"height":480}}
+              ]
+            }
+            """);
+        var document = new Document { ContentJson = json };
+
+        var result = await _builder.BuildAsync(document, DocumentContextType.StructureOutline);
+
+        Assert.Contains("image", result);
+        Assert.Contains("assetId: asset-123", result);
+        Assert.Contains("640x480", result);
+    }
 }

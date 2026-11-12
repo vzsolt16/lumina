@@ -94,6 +94,21 @@ public sealed class DocumentContextBuilder : IDocumentContextBuilder
             builder.Append(' ', depth * 2)
                 .Append("- [").Append(id).Append("] ")
                 .Append(type);
+            if (type == "image" && node["attrs"] is JsonObject attrs)
+            {
+                var assetId = attrs["assetId"]?.GetValue<string>();
+                var width = attrs["width"]?.GetValue<int?>();
+                var height = attrs["height"]?.GetValue<int?>();
+                if (!string.IsNullOrWhiteSpace(assetId))
+                {
+                    builder.Append(" (assetId: ").Append(assetId);
+                    if (width is not null && height is not null)
+                    {
+                        builder.Append(", ").Append(width).Append("x").Append(height);
+                    }
+                    builder.Append(')');
+                }
+            }
             if (text.Length > 0)
             {
                 builder.Append(": ").Append(text);

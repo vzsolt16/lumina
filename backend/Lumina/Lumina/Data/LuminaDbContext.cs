@@ -32,6 +32,8 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
 
     public DbSet<FlashcardJob> FlashcardJobs => Set<FlashcardJob>();
 
+    public DbSet<DocumentAsset> DocumentAssets => Set<DocumentAsset>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -121,6 +123,15 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
             .WithOne(c => c.Document)
             .HasForeignKey(c => c.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Document>()
+            .HasMany(d => d.Assets)
+            .WithOne(a => a.Document)
+            .HasForeignKey(a => a.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DocumentAsset>()
+            .HasIndex(a => a.DocumentId);
 
         modelBuilder.Entity<ChatConversation>()
             .HasMany(c => c.Messages)

@@ -19,4 +19,12 @@ public class EditProposalResponse
     public string Kind { get; set; } = "replace";
 
     public int? ContentVersion { get; set; }
+
+    // Structured proposals expose the canonical node references so the client
+    // can render a useful preview for image moves.
+    public string? TargetId { get; set; }
+
+    public string? ParentId { get; set; }
+
+    public string? Placement { get; set; }
 }

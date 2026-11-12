@@ -118,26 +118,30 @@ public class ChatService : IChatService
             throw new KeyNotFoundException("Conversation not found.");
         }
 
-        return await db.ChatMessages
+        var messages = await db.ChatMessages
             .Where(m => m.ConversationId == conversationId)
             .OrderBy(m => m.CreatedAt)
-            .Select(m => new ChatMessageResponse
-            {
-                Id = m.Id,
-                Role = m.Role,
-                Content = m.Content,
-                CreatedAt = m.CreatedAt,
-                Proposal = m.ProposalTarget == null ? null : new EditProposalResponse
-                {
-                    MessageId = m.Id,
-                    Target = m.ProposalTarget,
-                    Replacement = m.ProposalReplacement ?? string.Empty,
-                    Status = m.ProposalStatus ?? EditProposalStatus.Pending,
-                    Kind = m.ProposalKind ?? ProposalKindReplace,
-                    ContentVersion = m.ProposalContentVersion
-                }
-            })
             .ToListAsync();
+
+        return messages.Select(m => new ChatMessageResponse
+        {
+            Id = m.Id,
+            Role = m.Role,
+            Content = m.Content,
+            CreatedAt = m.CreatedAt,
+            Proposal = m.ProposalTarget == null ? null : new EditProposalResponse
+            {
+                MessageId = m.Id,
+                Target = m.ProposalTarget,
+                Replacement = m.ProposalReplacement ?? string.Empty,
+                Status = m.ProposalStatus ?? EditProposalStatus.Pending,
+                Kind = m.ProposalKind ?? ProposalKindReplace,
+                ContentVersion = m.ProposalContentVersion,
+                TargetId = GetStoredOperation(m.ProposalOperationJson)?.TargetId,
+                ParentId = GetStoredOperation(m.ProposalOperationJson)?.ParentId,
+                Placement = GetStoredOperation(m.ProposalOperationJson)?.Placement
+            }
+        }).ToList();
     }
 
     public async Task DeleteConversationAsync(Guid documentId, Guid conversationId, Guid userId)
@@ -258,28 +262,32 @@ public class ChatService : IChatService
 
                     if (delta.Content is { Length: > 0 } token)
                     {
-                        // Buffer the whole turn. Ollama/Qwen can emit explanatory
-                        // text alongside a tool call; it is tool chatter, not a
-                        // user-facing answer, and must not be streamed prematurely.
                         rawTurnText.Append(token);
+
+                        // Stream visible answer fragments as Ollama produces them.
+                        // Tool-call turns are expected to contain no user-facing
+                        // prose; rawTurnText is still retained for the assistant
+                        // tool-call message sent back to the model.
+                        var chunk = token;
+                        if (!seenContent)
+                        {
+                            chunk = chunk.TrimStart();
+                            if (chunk.Length == 0)
+                            {
+                                continue;
+                            }
+
+                            seenContent = true;
+                        }
+
+                        visible.Append(chunk);
+                        yield return ChatStreamEvent.ForToken(chunk);
                     }
                 }
 
                 // No tool calls → this turn was the visible answer; stop looping.
                 if (toolCalls.Count == 0)
                 {
-                    var chunk = rawTurnText.ToString();
-                    if (!seenContent)
-                    {
-                        chunk = chunk.TrimStart();
-                    }
-
-                    if (chunk.Length > 0)
-                    {
-                        seenContent = true;
-                        visible.Append(chunk);
-                        yield return ChatStreamEvent.ForToken(chunk);
-                    }
 
                     break;
                 }
@@ -328,7 +336,10 @@ public class ChatService : IChatService
                                 Status = EditProposalStatus.Pending,
                                 Kind = draft.Kind
                                 ,
-                                ContentVersion = draft.ContentVersion
+                                ContentVersion = draft.ContentVersion,
+                                TargetId = GetStoredOperation(draft.OperationJson)?.TargetId,
+                                ParentId = GetStoredOperation(draft.OperationJson)?.ParentId,
+                                Placement = GetStoredOperation(draft.OperationJson)?.Placement
                             };
                             stopAfterProposal = true;
                         }
@@ -463,15 +474,11 @@ public class ChatService : IChatService
             return result;
         }
 
-        var replacement = message.ProposalReplacement ?? string.Empty;
-        var newContent = message.ProposalKind switch
-        {
-            ProposalKindPrepend => replacement + document.Content,
-            ProposalKindInsert => ApplyInsert(document.Content, message.ProposalTarget!, replacement),
-            _ => ApplyReplace(document.Content, message.ProposalTarget!, replacement)
-        };
-
-        DocumentContentMutation.Apply(document, newContent, _contentConverter);
+        ApplyLegacyProposalPreservingStructure(
+            document,
+            message.ProposalKind,
+            message.ProposalTarget ?? string.Empty,
+            message.ProposalReplacement ?? string.Empty);
         document.UpdatedAt = DateTime.UtcNow;
         message.ProposalStatus = EditProposalStatus.Applied;
 
@@ -572,6 +579,135 @@ public class ChatService : IChatService
         var index = content.IndexOf(anchor, StringComparison.Ordinal) + anchor.Length;
         return content.Insert(index, "\n\n" + text);
     }
+
+    private void ApplyLegacyProposalPreservingStructure(
+            Document document,
+            string? kind,
+            string target,
+            string replacement)
+        {
+            var root = JsonNode.Parse(_contentConverter.Normalize(document.ContentJson))!.AsObject();
+            var rootContent = root["content"] as JsonArray
+                ?? throw new InvalidOperationException("The document content is missing its root content.");
+
+            switch (kind)
+            {
+                case ProposalKindPrepend:
+                    rootContent.Insert(0, CreateProposalParagraph(replacement));
+                    break;
+
+                case ProposalKindInsert:
+                    if (target.Length == 0)
+                    {
+                        rootContent.Add(CreateProposalParagraph(replacement));
+                        break;
+                    }
+
+                    var anchor = FindBlockNodes(root)
+                        .FirstOrDefault(node => string.Equals(
+                            ExtractNodeText(node),
+                            target,
+                            StringComparison.Ordinal));
+                    if (anchor is null)
+                    {
+                        throw new InvalidOperationException(
+                            "The document has changed since this edit was proposed; the passage to insert after no longer exists.");
+                    }
+
+                    var parent = FindParentArray(root, anchor);
+                    if (parent is null)
+                    {
+                        throw new InvalidOperationException("The proposed insertion location is no longer valid.");
+                    }
+
+                    parent.Insert(parent.IndexOf(anchor) + 1, CreateProposalParagraph(replacement));
+                    break;
+
+                default:
+                    if (!ReplaceTextInSingleNode(root, target, replacement))
+                    {
+                        throw new InvalidOperationException(
+                            "The document has changed since this edit was proposed; the passage to replace no longer exists as one editable text block.");
+                    }
+                    break;
+            }
+
+            var normalized = _contentConverter.Normalize(root.ToJsonString());
+            document.ContentJson = normalized;
+            document.Content = _contentConverter.ExtractPlainText(normalized);
+            document.ContentSize = Encoding.UTF8.GetByteCount(document.Content);
+            document.ContentVersion++;
+        }
+
+        private static JsonObject CreateProposalParagraph(string text) => new()
+        {
+            ["type"] = "paragraph",
+            ["content"] = text.Length == 0
+                ? null
+                : new JsonArray(new JsonObject
+                {
+                    ["type"] = "text",
+                    ["text"] = text
+                })
+        };
+
+        private static JsonArray? FindParentArray(JsonObject root, JsonObject target)
+        {
+            if (root["content"] is not JsonArray content)
+            {
+                return null;
+            }
+
+            foreach (var child in content.OfType<JsonObject>())
+            {
+                if (ReferenceEquals(child, target))
+                {
+                    return content;
+                }
+
+                var nested = FindParentArray(child, target);
+                if (nested is not null)
+                {
+                    return nested;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool ReplaceTextInSingleNode(JsonObject node, string target, string replacement)
+        {
+            if (node["content"] is JsonArray content)
+            {
+                foreach (var child in content.OfType<JsonObject>())
+                {
+                    if (child["type"]?.GetValue<string>() == "text")
+                    {
+                        var text = child["text"]?.GetValue<string>() ?? string.Empty;
+                        var index = text.IndexOf(target, StringComparison.Ordinal);
+                        if (index < 0)
+                        {
+                            continue;
+                        }
+
+                        child["text"] = text.Remove(index, target.Length).Insert(index, replacement);
+                        if (child["text"]?.GetValue<string>() is { Length: 0 })
+                        {
+                            content.Remove(child);
+                        }
+
+                        return true;
+                    }
+
+                    if (ReplaceTextInSingleNode(child, target, replacement))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
 
     // Counts occurrences (including overlapping ones) of a passage in the
     // document, stopping at 2 — callers only care about "none / one / many".
@@ -717,7 +853,7 @@ public class ChatService : IChatService
         + "the original list item count minus one, not the count after removal); "
         + "never use before or after with the list container. "
         + "For the document root, use parent_id=null and placement at_index. The user must "
-        + "approve the proposal.",
+        + "approve the proposal. Copy node IDs exactly, including the leading 'node-' prefix.",
         JsonSerializer.SerializeToElement(new
         {
             type = "object",
@@ -865,9 +1001,16 @@ public class ChatService : IChatService
                     return ("Error: target_id and new_text are required.", null, null);
                 }
 
+                var resolvedTargetId = await ResolveNodeIdAsync(
+                    documentId, userId, targetId, cancellationToken);
+                if (resolvedTargetId is null)
+                {
+                    return ("Error: target_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.", null, null);
+                }
+
                 var operation = new StoredOperation(
                     "replace",
-                    targetId,
+                    resolvedTargetId,
                     null,
                     0,
                     null,
@@ -902,8 +1045,16 @@ public class ChatService : IChatService
                     return ("Error: index, node_type, and content are required.", null, null);
                 }
 
+                var resolvedParentId = parentId is null
+                    ? null
+                    : await ResolveNodeIdAsync(documentId, userId, parentId, cancellationToken);
+                if (parentId is not null && resolvedParentId is null)
+                {
+                    return ("Error: parent_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.", null, null);
+                }
+
                 var operation = new StoredOperation(
-                    "insert", null, parentId, index, nodeType, nodeContent);
+                    "insert", null, resolvedParentId, index, nodeType, nodeContent);
                 var validationError = await ValidateProposedOperationAsync(
                     documentId,
                     userId,
@@ -917,7 +1068,7 @@ public class ChatService : IChatService
 
                 return CreateStructuredProposal(
                     "Proposed inserting the new node. The user will review and apply it.",
-                    parentId ?? string.Empty,
+                    resolvedParentId ?? string.Empty,
                     nodeContent,
                     "insert_node",
                     operation,
@@ -977,8 +1128,23 @@ public class ChatService : IChatService
                     return ("Error: placement must be before, after, or at_index.", null, null);
                 }
 
+                var resolvedTargetId = await ResolveNodeIdAsync(
+                    documentId, userId, targetId, cancellationToken);
+                var resolvedParentId = parentId is null
+                    ? null
+                    : await ResolveNodeIdAsync(documentId, userId, parentId, cancellationToken);
+                if (resolvedTargetId is null)
+                {
+                    return ("Error: target_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.", null, null);
+                }
+
+                if (parentId is not null && resolvedParentId is null)
+                {
+                    return ("Error: parent_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.", null, null);
+                }
+
                 var operation = new StoredOperation(
-                    "move", targetId, parentId, index, null, null, placement);
+                    "move", resolvedTargetId, resolvedParentId, index, null, null, placement);
                 var validationError = await ValidateProposedOperationAsync(
                     documentId,
                     userId,
@@ -990,12 +1156,15 @@ public class ChatService : IChatService
                     return (validationError, null, null);
                 }
 
-                var targetLabel = await GetNodeLabelAsync(documentId, userId, targetId, cancellationToken)
-                    ?? targetId;
+                var targetLabel = await GetNodeLabelAsync(documentId, userId, resolvedTargetId, cancellationToken);
+                if (string.IsNullOrWhiteSpace(targetLabel))
+                {
+                    targetLabel = resolvedTargetId;
+                }
                 var destinationLabel = await GetMoveDestinationLabelAsync(
                     documentId,
                     userId,
-                    parentId,
+                    resolvedParentId,
                     index,
                     placement,
                     cancellationToken);
@@ -1383,7 +1552,9 @@ public class ChatService : IChatService
 
     private static JsonObject? FindJsonNode(JsonObject node, string id)
     {
-        if (string.Equals(node["attrs"]?["id"]?.GetValue<string>(), id, StringComparison.Ordinal))
+        var nodeId = node["attrs"]?["id"]?.GetValue<string>();
+        if (string.Equals(nodeId, id, StringComparison.Ordinal)
+            || string.Equals(WithoutNodePrefix(nodeId), WithoutNodePrefix(id), StringComparison.Ordinal))
         {
             return node;
         }
@@ -1397,7 +1568,7 @@ public class ChatService : IChatService
 
     private static DocumentOperation DeserializeOperation(string json, int version)
     {
-        var operation = JsonSerializer.Deserialize<StoredOperation>(json)
+        var operation = GetStoredOperation(json)
             ?? throw new InvalidOperationException("The saved edit operation is invalid.");
 
         return operation.Kind switch
@@ -1419,6 +1590,11 @@ public class ChatService : IChatService
             _ => throw new InvalidOperationException("The saved edit operation is unsupported.")
         };
     }
+
+    private static StoredOperation? GetStoredOperation(string? json) =>
+        string.IsNullOrWhiteSpace(json)
+            ? null
+            : JsonSerializer.Deserialize<StoredOperation>(json);
 
     private static string ResolveStructuredOperationReferences(
         string contentJson,
@@ -1466,7 +1642,7 @@ public class ChatService : IChatService
         var byId = FindJsonNode(root, reference);
         if (byId is not null)
         {
-            return reference;
+            return byId["attrs"]?["id"]?.GetValue<string>();
         }
 
         var matches = FindBlockNodes(root)
@@ -1480,6 +1656,11 @@ public class ChatService : IChatService
             ? matches[0]["attrs"]?["id"]?.GetValue<string>()
             : null;
     }
+
+    private static string? WithoutNodePrefix(string? id) =>
+        id?.StartsWith("node-", StringComparison.Ordinal) == true
+            ? id[5..]
+            : id;
 
     private static IEnumerable<JsonObject> FindBlockNodes(JsonObject node)
     {
@@ -1599,6 +1780,11 @@ public class ChatService : IChatService
             "at_index with the desired zero-based position. To move into any other container, " +
             "also use placement at_index with the container ID and zero-based index; use " +
             "parent_id=null for the document root.");
+        sb.AppendLine(
+            "Images are real document nodes. Their structure entries include an image node ID, " +
+            "assetId, and dimensions, but this text-only model cannot see the image pixels. " +
+            "Use those exact IDs to reorder images; do not claim that images are absent just " +
+            "because they have no readable text.");
         sb.AppendLine(
             "Never show stable node IDs in your user-facing answer. Use them only as tool arguments; " +
             "refer to the affected section by its readable text or a short description.");

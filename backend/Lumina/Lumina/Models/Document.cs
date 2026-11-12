@@ -49,4 +49,6 @@ public class Document
     public ICollection<Quiz> Quizzes { get; set; } = [];
 
     public ICollection<ChatConversation> Conversations { get; set; } = [];
+
+    public ICollection<DocumentAsset> Assets { get; set; } = [];
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useOutletContext } from 'react-router-dom'
 import { HubConnectionBuilder, HttpTransportType } from '@microsoft/signalr'
 import ReactMarkdown from 'react-markdown'
@@ -10,6 +10,7 @@ import {
   deleteConversation,
   applyEditProposal,
   rejectEditProposal,
+  getDocumentAssetBlob,
 } from '../../api/client.js'
 import { getAccessToken } from '../../api/authToken.js'
 import { PlusIcon, TrashIcon } from '../../components/icons.jsx'
@@ -40,11 +41,76 @@ function formatTime(iso) {
   return `${date} ${time}`
 }
 
+function findImageNodes(node, result = []) {
+  if (!node || typeof node !== 'object') return result
+  if (node.type === 'image') result.push(node)
+  if (Array.isArray(node.content)) {
+    node.content.forEach((child) => findImageNodes(child, result))
+  }
+  return result
+}
+
+function getDocumentImages(doc) {
+  if (!doc?.contentJson) return []
+  try {
+    return findImageNodes(JSON.parse(doc.contentJson))
+  } catch {
+    return []
+  }
+}
+
+function ProposalAssetPreview({ documentId, node, label }) {
+  const [src, setSrc] = useState('')
+
+  useEffect(() => {
+    let active = true
+    let objectUrl = ''
+    const assetId = node?.attrs?.assetId
+    if (!assetId) return undefined
+
+    getDocumentAssetBlob(documentId, assetId)
+      .then((blob) => {
+        if (!active) return
+        objectUrl = URL.createObjectURL(blob)
+        setSrc(objectUrl)
+      })
+      .catch(() => setSrc(''))
+
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [documentId, node?.attrs?.assetId])
+
+  if (!node) return null
+
+  return (
+    <div className="chat-proposal-image">
+      {src ? (
+        <img
+          src={src}
+          alt={node.attrs?.alt || label}
+          className="chat-proposal-image-preview"
+        />
+      ) : (
+        <div className="chat-proposal-image-placeholder">IMAGE</div>
+      )}
+      <div className="chat-proposal-image-meta">
+        <span>{label}</span>
+        {node.attrs?.width && node.attrs?.height && (
+          <span>{node.attrs.width} × {node.attrs.height}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function ChatTab() {
   const { docId } = useParams()
   // Applying an AI edit changes the document; bubble the updated doc up so the
   // Content tab and header see the new text without a refetch.
-  const { onDocUpdated } = useOutletContext()
+  const { doc, onDocUpdated } = useOutletContext()
+  const imageNodes = useMemo(() => getDocumentImages(doc), [doc?.contentJson])
 
   const [conversations, setConversations] = useState([])
   const [activeId, setActiveId] = useState(null)
@@ -580,21 +646,52 @@ export default function ChatTab() {
                             )}
                           </>
                         ) : m.proposal.kind === 'move_node' ? (
-                          <>
-                            <div className="chat-proposal-caption">// NODE MOVE</div>
-                            {m.proposal.target && (
+                          (() => {
+                            const targetImage = imageNodes.find(
+                              (node) => node.attrs?.id === m.proposal.targetId,
+                            )
+                            const destinationImage = imageNodes.find(
+                              (node) => node.attrs?.id === m.proposal.parentId,
+                            )
+                            const isImageMove = Boolean(targetImage || destinationImage)
+                            return (
                               <>
-                                <div className="chat-proposal-caption">// MOVE THIS</div>
-                                <pre className="chat-proposal-block del">{m.proposal.target}</pre>
+                                <div className="chat-proposal-caption">// NODE MOVE</div>
+                                {isImageMove ? (
+                                  <div className="chat-proposal-image-move">
+                                    <ProposalAssetPreview
+                                      documentId={docId}
+                                      node={targetImage}
+                                      label="// MOVE THIS IMAGE"
+                                    />
+                                    <div className="chat-proposal-move-arrow">
+                                      {m.proposal.placement === 'before' ? '↑ BEFORE' : '↓ AFTER'}
+                                    </div>
+                                    <ProposalAssetPreview
+                                      documentId={docId}
+                                      node={destinationImage}
+                                      label="// RELATIVE TO THIS IMAGE"
+                                    />
+                                  </div>
+                                ) : (
+                                  <>
+                                    {m.proposal.target && (
+                                      <>
+                                        <div className="chat-proposal-caption">// MOVE THIS</div>
+                                        <pre className="chat-proposal-block del">{m.proposal.target}</pre>
+                                      </>
+                                    )}
+                                    {m.proposal.replacement && (
+                                      <>
+                                        <div className="chat-proposal-caption">// TO</div>
+                                        <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                                      </>
+                                    )}
+                                  </>
+                                )}
                               </>
-                            )}
-                            {m.proposal.replacement && (
-                              <>
-                                <div className="chat-proposal-caption">// TO</div>
-                                <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
-                              </>
-                            )}
-                          </>
+                            )
+                          })()
                         ) : (
                           <>
                             {m.proposal.target && (

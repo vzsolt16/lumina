@@ -17,6 +17,8 @@ import TableCell from '@tiptap/extension-table-cell'
 import TableHeader from '@tiptap/extension-table-header'
 import TableRow from '@tiptap/extension-table-row'
 import { updateDocument } from '../../api/client.js'
+import { uploadDocumentAsset } from '../../api/client.js'
+import { AssetImage } from './AssetImageNode.jsx'
 import { getFileExtension, getFileStem } from '../../constants/documentFormats.js'
 
 const ID_ATTRIBUTE = {
@@ -64,7 +66,7 @@ function createEditorExtensions() {
     withNodeId(CodeBlock),
     withNodeId(Heading),
     withNodeId(HorizontalRule),
-    withNodeId(Image),
+    withNodeId(AssetImage(Image)),
     withNodeId(ListItem),
     withNodeId(OrderedList),
     withNodeId(Paragraph),
@@ -83,7 +85,17 @@ function parseContent(doc) {
   if (doc?.contentJson) {
     try {
       const parsed = JSON.parse(doc.contentJson)
-      if (parsed?.type === 'doc') return parsed
+      if (parsed?.type === 'doc') {
+        const attachDocumentId = (node) => {
+          if (!node || typeof node !== 'object') return
+          if (node.type === 'image') {
+            node.attrs = { ...(node.attrs || {}), documentId: doc.id }
+          }
+          node.content?.forEach(attachDocumentId)
+        }
+        attachDocumentId(parsed)
+        return parsed
+      }
     } catch {
       // The backend backfills legacy documents; this is only a defensive
       // fallback for an incomplete response.
@@ -100,7 +112,7 @@ function parseContent(doc) {
   }
 }
 
-function Toolbar({ editor }) {
+function Toolbar({ editor, onUpload }) {
   if (!editor) return null
 
   const button = (label, action, active = false, disabled = false) => (
@@ -130,6 +142,21 @@ function Toolbar({ editor }) {
       {button('1. List', () => editor.chain().focus().toggleOrderedList().run(), editor.isActive('orderedList'))}
       {button('Quote', () => editor.chain().focus().toggleBlockquote().run(), editor.isActive('blockquote'))}
       {button('Rule', () => editor.chain().focus().setHorizontalRule().run())}
+      {button('Image', onUpload)}
+      {editor.isActive('image') && (
+        <>
+          <span className="editor-tool-separator" />
+          {button('Left', () => editor.chain().focus().updateAttributes('image', { align: 'left' }).run())}
+          {button('Center', () => editor.chain().focus().updateAttributes('image', { align: 'center' }).run())}
+          {button('Right', () => editor.chain().focus().updateAttributes('image', { align: 'right' }).run())}
+          {button('Resize', () => {
+            const width = Number(window.prompt('Image width in pixels', editor.getAttributes('image').width || 600))
+            if (Number.isFinite(width) && width > 0) {
+              editor.chain().focus().updateAttributes('image', { width }).run()
+            }
+          })}
+        </>
+      )}
       {button('↵', () => editor.chain().focus().setHardBreak().run(), false, !editor.can().setHardBreak())}
       <span className="editor-tool-spacer" />
       {button('Undo', () => editor.chain().focus().undo().run(), false, !editor.can().undo())}
@@ -147,6 +174,7 @@ export default function ContentTab() {
   const [dirty, setDirty] = useState(false)
   const [saveState, setSaveState] = useState('saved')
   const [error, setError] = useState('')
+  const fileInputRef = useRef(null)
   const versionRef = useRef(0)
   const pendingRef = useRef(null)
   const saveLoopRef = useRef(false)
@@ -272,6 +300,23 @@ export default function ContentTab() {
     setError('')
   }
 
+  async function insertImage(file) {
+    try {
+      const asset = await uploadDocumentAsset(docId, file)
+      editor?.chain().focus().setImage({
+        assetId: asset.id,
+        documentId: docId,
+        alt: asset.fileName,
+        width: asset.width,
+        height: asset.height,
+      }).run()
+      setDirty(true)
+      setSaveState('unsaved')
+    } catch (err) {
+      setError(err?.message || 'Image upload failed.')
+    }
+  }
+
   const isMarkdown = getFileExtension(doc.fileName).toLowerCase() === '.md'
   const statusLabel = saveState === 'saving'
     ? 'SAVING…'
@@ -319,7 +364,18 @@ export default function ContentTab() {
                 <span className="doc-extension" aria-hidden="true">{getFileExtension(doc.fileName)}</span>
               </div>
               <label className="doc-edit-label">Content</label>
-              <Toolbar editor={editor} />
+              <Toolbar editor={editor} onUpload={() => fileInputRef.current?.click()} />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                hidden
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) insertImage(file)
+                  event.target.value = ''
+                }}
+              />
               <EditorContent editor={editor} className="doc-editor" />
               {error && <div className="error-line">// ERROR: {error}</div>}
             </>

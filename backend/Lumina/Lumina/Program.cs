@@ -125,6 +125,7 @@ builder.Services.AddSingleton<IDocumentContentExtractor, PdfContentExtractor>();
 builder.Services.AddSingleton<IDocumentContentExtractor, DocxContentExtractor>();
 builder.Services.AddSingleton<DocumentContentExtractor>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IDocumentEditorService, DocumentEditorService>();
 builder.Services.AddSingleton<IDocumentContentConverter, ProseMirrorDocumentConverter>();
 builder.Services.AddSingleton<IDocumentContextBuilder, DocumentContextBuilder>();

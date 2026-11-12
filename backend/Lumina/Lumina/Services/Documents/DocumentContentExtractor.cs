@@ -36,7 +36,7 @@ public sealed class DocumentContentExtractor
         return extracted;
     }
 
-    public async Task<string?> ExtractStructuredAsync(
+    public async Task<ExtractedDocument?> ExtractStructuredAsync(
         string extension,
         Stream content,
         CancellationToken cancellationToken = default)
@@ -48,8 +48,8 @@ public sealed class DocumentContentExtractor
         }
 
         var structured = await extractor.ExtractStructuredAsync(content, cancellationToken);
-        if (structured is not null
-            && Encoding.UTF8.GetByteCount(structured) > MaxExtractedContentSize)
+        if (structured?.ContentJson is not null
+            && Encoding.UTF8.GetByteCount(structured.ContentJson) > MaxExtractedContentSize)
         {
             throw new InvalidOperationException("The extracted document content is too large.");
         }
@@ -113,6 +113,88 @@ public sealed class PdfContentExtractor : IDocumentContentExtractor
         {
             throw new InvalidOperationException("The PDF file is invalid or could not be read.", ex);
         }
+
+    }
+
+    public Task<ExtractedDocument?> ExtractStructuredAsync(
+            Stream content, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                using var document = PdfDocument.Open(content);
+                var assets = new List<ExtractedAsset>();
+                var nodes = new JsonArray();
+                foreach (var page in document.GetPages())
+                {
+                    var text = page.Text;
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        nodes.Add(new JsonObject
+                        {
+                            ["type"] = "paragraph",
+                            ["content"] = new JsonArray(new JsonObject
+                            {
+                                ["type"] = "text",
+                                ["text"] = text
+                            })
+                        });
+                    }
+
+                    foreach (var image in page.GetImages())
+                    {
+                        byte[] bytes;
+                        string contentType;
+                        if (image.TryGetPng(out var png))
+                        {
+                            bytes = png;
+                            contentType = "image/png";
+                        }
+                        else
+                        {
+                            bytes = image.RawBytes.ToArray();
+                            contentType = "image/jpeg";
+                        }
+
+                        if (bytes.Length == 0) continue;
+                        var referenceId = $"pdf-{assets.Count}-{Guid.NewGuid():N}";
+                        assets.Add(new ExtractedAsset
+                        {
+                            ReferenceId = referenceId,
+                            FileName = $"{referenceId}.png",
+                            ContentType = contentType,
+                            Content = bytes,
+                            Width = image.WidthInSamples,
+                            Height = image.HeightInSamples
+                        });
+                        nodes.Add(new JsonObject
+                        {
+                            ["type"] = "image",
+                            ["attrs"] = new JsonObject
+                            {
+                                ["assetId"] = referenceId,
+                                ["alt"] = "Extracted PDF image",
+                                ["width"] = image.WidthInSamples,
+                                ["height"] = image.HeightInSamples
+                            }
+                        });
+                    }
+                }
+
+                return Task.FromResult<ExtractedDocument?>(new ExtractedDocument
+                {
+                    ContentJson = new JsonObject
+                    {
+                        ["type"] = "doc",
+                        ["content"] = nodes
+                    }.ToJsonString(),
+                    Assets = assets
+                });
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new InvalidOperationException("The PDF file is invalid or could not be read.", ex);
+        }
     }
 }
 
@@ -166,7 +248,7 @@ public sealed class DocxContentExtractor : IDocumentContentExtractor
         }
     }
 
-    public async Task<string?> ExtractStructuredAsync(
+    public async Task<ExtractedDocument?> ExtractStructuredAsync(
         Stream content,
         CancellationToken cancellationToken = default)
         {
@@ -188,17 +270,24 @@ public sealed class DocxContentExtractor : IDocumentContentExtractor
                 XNamespace word = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
                 var document = LoadXml(archive, entry, cancellationToken);
                 var numbering = LoadNumbering(archive, word, cancellationToken);
+                var relationships = LoadImageRelationships(archive, cancellationToken);
+                var assets = new List<ExtractedAsset>();
                 var paragraphs = document
                     .Descendants(word + "p")
-                    .Select(paragraph => CreateParagraphInfo(paragraph, word, numbering))
+                    .Select(paragraph => CreateParagraphInfo(
+                        paragraph, word, numbering, relationships, archive, assets, cancellationToken))
                     .ToList();
                 var contentNodes = BuildContent(paragraphs);
 
-                return new JsonObject
+                return new ExtractedDocument
                 {
-                    ["type"] = "doc",
-                    ["content"] = contentNodes
-                }.ToJsonString();
+                    ContentJson = new JsonObject
+                    {
+                        ["type"] = "doc",
+                        ["content"] = contentNodes
+                    }.ToJsonString(),
+                    Assets = assets
+                };
             }
             catch (InvalidOperationException)
             {
@@ -210,7 +299,13 @@ public sealed class DocxContentExtractor : IDocumentContentExtractor
             }
         }
 
-    private sealed record ParagraphInfo(JsonObject Node, string? ListType, int Level);
+    private sealed record ParagraphInfo(
+        JsonObject Node,
+        string? ListType,
+        int Level,
+        IReadOnlyList<JsonObject> Images);
+
+    private sealed record ImageRelationship(string Target, string ContentType);
 
     private static XDocument LoadXml(
         ZipArchive archive,
@@ -261,12 +356,85 @@ public sealed class DocxContentExtractor : IDocumentContentExtractor
         return result;
     }
 
+    private static Dictionary<string, ImageRelationship> LoadImageRelationships(
+        ZipArchive archive,
+        CancellationToken cancellationToken)
+    {
+        var entry = archive.GetEntry("word/_rels/document.xml.rels");
+        if (entry is null) return [];
+
+        var relationships = LoadXml(archive, entry, cancellationToken);
+        XNamespace rel = "http://schemas.openxmlformats.org/package/2006/relationships";
+        var result = new Dictionary<string, ImageRelationship>(StringComparer.Ordinal);
+        foreach (var relationship in relationships.Root?.Elements(rel + "Relationship") ?? [])
+        {
+            var id = (string?)relationship.Attribute("Id");
+            var target = (string?)relationship.Attribute("Target");
+            var type = (string?)relationship.Attribute("Type");
+            if (id is null || target is null || type is null || !type.EndsWith("/image", StringComparison.Ordinal))
+                continue;
+
+            var normalizedTarget = target.Replace('\\', '/').TrimStart('/');
+            if (!normalizedTarget.StartsWith("word/", StringComparison.OrdinalIgnoreCase))
+                normalizedTarget = $"word/{normalizedTarget}";
+            result[id] = new ImageRelationship(normalizedTarget, GetImageContentType(normalizedTarget));
+        }
+
+        return result;
+    }
+
+    private static string GetImageContentType(string target) => Path.GetExtension(target).ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".webp" => "image/webp",
+        ".bmp" => "image/bmp",
+        _ => "application/octet-stream"
+    };
+
     private static ParagraphInfo CreateParagraphInfo(
         XElement paragraph,
         XNamespace word,
-        Dictionary<string, Dictionary<int, string>> numbering)
+        Dictionary<string, Dictionary<int, string>> numbering,
+        Dictionary<string, ImageRelationship> relationships,
+        ZipArchive archive,
+        List<ExtractedAsset> assets,
+        CancellationToken cancellationToken)
     {
         var node = CreateParagraph(paragraph, word);
+        var images = new List<JsonObject>();
+        foreach (var blip in paragraph.Descendants(XName.Get("blip", "http://schemas.openxmlformats.org/drawingml/2006/main")))
+        {
+            var relationshipId = (string?)blip.Attribute(XName.Get("embed", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"));
+            if (relationshipId is null
+                || !relationships.TryGetValue(relationshipId, out var relationship)
+                || archive.GetEntry(relationship.Target) is not { } imageEntry
+                || imageEntry.Length > MaxEntrySize)
+                continue;
+
+            using var stream = imageEntry.Open();
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            var referenceId = $"docx-{assets.Count}-{Guid.NewGuid():N}";
+            var asset = new ExtractedAsset
+            {
+                ReferenceId = referenceId,
+                FileName = Path.GetFileName(relationship.Target),
+                ContentType = relationship.ContentType,
+                Content = buffer.ToArray()
+            };
+            assets.Add(asset);
+            images.Add(new JsonObject
+            {
+                ["type"] = "image",
+                ["attrs"] = new JsonObject
+                {
+                    ["assetId"] = referenceId,
+                    ["alt"] = asset.FileName
+                }
+            });
+        }
         var properties = paragraph.Element(word + "pPr");
         var numPr = properties?.Element(word + "numPr");
         var numId = (string?)numPr?.Element(word + "numId")?.Attribute(word + "val");
@@ -275,13 +443,14 @@ public sealed class DocxContentExtractor : IDocumentContentExtractor
             || !numbering.TryGetValue(numId, out var levels)
             || !levels.TryGetValue(level, out var format))
         {
-            return new ParagraphInfo(node, null, 0);
+            return new ParagraphInfo(node, null, 0, images);
         }
 
         return new ParagraphInfo(
             node,
             format == "bullet" ? "bulletList" : "orderedList",
-            level);
+            level,
+            images);
     }
 
     private static JsonArray BuildContent(IReadOnlyList<ParagraphInfo> paragraphs)
@@ -293,6 +462,8 @@ public sealed class DocxContentExtractor : IDocumentContentExtractor
             if (paragraphs[index].ListType is null)
             {
                 result.Add(paragraphs[index].Node);
+                foreach (var image in paragraphs[index].Images)
+                    result.Add(image);
                 index++;
                 continue;
             }

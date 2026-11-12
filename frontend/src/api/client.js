@@ -160,6 +160,27 @@ export function updateDocument(id, payload) {
   })
 }
 
+export async function uploadDocumentAsset(documentId, file) {
+  const form = new FormData()
+  form.append('file', file)
+  return request(`/api/documents/${documentId}/assets`, { method: 'POST', body: form })
+}
+
+export function deleteDocumentAsset(documentId, assetId) {
+  return request(`/api/documents/${documentId}/assets/${assetId}`, { method: 'DELETE' })
+}
+
+export async function getDocumentAssetBlob(documentId, assetId) {
+  const token = getAccessToken()
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const response = await fetch(`/api/documents/${documentId}/assets/${assetId}`, {
+    headers,
+    credentials: 'include',
+  })
+  if (!response.ok) throw new Error(`Unable to load image (${response.status})`)
+  return response.blob()
+}
+
 /**
  * Move a document into a folder, or to the root with folderId = null.
  * @param {string} id
