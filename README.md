@@ -1,6 +1,19 @@
 # Lumina
 
-Lumina is an AI-powered study companion that helps users learn from their own documents.
+Lumina is an AI-powered study companion that helps users learn from their own
+documents. Upload study material, generate quizzes and flashcards, and chat
+with documents in real time.
+
+## Features
+
+- Upload TXT, Markdown, PDF, and DOCX files
+- AI-generated flashcards and quizzes
+- Conversational document chat with SignalR streaming
+- Select between configured Gemini models per conversation
+- AI-assisted document editing through reviewable proposals
+- Structured ProseMirror document operations, including list format changes
+- JWT authentication with rotating refresh tokens
+- SQLite persistence
 
 ## Preview
 
@@ -8,9 +21,7 @@ Lumina is an AI-powered study companion that helps users learn from their own do
 
 ![AI Chat](assets/chat.gif)
 
-Chat with uploaded documents using a locally hosted LLM with real-time streaming.
-
----
+Chat with uploaded documents and receive streamed responses.
 
 ### Quiz Generation
 
@@ -18,169 +29,197 @@ Chat with uploaded documents using a locally hosted LLM with real-time streaming
 
 Generate interactive quizzes from study materials.
 
----
-
 ### Flashcards
 
 ![Flashcards](assets/flashcard.gif)
 
 Review AI-generated flashcards for active recall learning.
 
-Features:
-- Upload TXT, MD, PDF and DOCX files
-- AI-generated flashcards
-- AI-generated quizzes
-- Chat with your documents
-- Local AI integration via Ollama
-- Real-time response streaming with WebSockets
-
 ## Tech Stack
 
 ### Frontend
-- React + Vite (JavaScript)
+
+- React + Vite
 - React Router
+- Tiptap/ProseMirror document editor
 - SignalR client (`@microsoft/signalr`)
 
 ### Backend
-- ASP.NET Core Web API (.NET 10)
+
+- ASP.NET Core Web API on .NET 10
 - Entity Framework Core
 - SQLite
-- JWT auth (access token + rotating refresh token)
+- JWT authentication
 - SignalR
 
 ### AI
-- Ollama
-- Qwen 3 (`qwen3:4b`)
 
-## Setup
+Lumina currently uses the Google Gemini API for generation, tool calling,
+structured responses, and streamed chat responses.
 
-### Prerequisites
+The backend-controlled model catalog currently contains:
+
+| Internal ID | Gemini API model |
+| --- | --- |
+| `gemini-flash` | `gemini-3.8-flash` |
+| `gemini-3-flash-preview` | `gemini-3-flash-preview` |
+| `gemini-flash-lite` | `gemini-3.1-flash-lite` |
+
+Model IDs are validated by the backend. The frontend cannot send arbitrary
+Gemini model identifiers.
+
+## Requirements
+
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [Node.js](https://nodejs.org/) (18+) and npm
-- [Ollama](https://ollama.com) running locally
+- [Node.js](https://nodejs.org/) 18+ and npm
+- A Google Gemini API key
+- OpenSSL, for generating a JWT signing key
 
-### 1. Install Ollama and pull the model
+## Local Setup
 
-The AI features call a local Ollama instance at `http://localhost:11434`, so Ollama
-must be installed and running before you start the backend.
+### 1. Configure backend secrets
 
-```bash
-# macOS (Homebrew)
-brew install ollama
-
-# Linux
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-On Windows, download the installer from [ollama.com/download](https://ollama.com/download).
-
-Then start the server and pull the model Lumina uses:
-
-```bash
-ollama serve          # leave this running (not needed if installed as a service)
-ollama pull qwen3:4b
-```
-
-### 2. Configure the backend `.env`
-
-The JWT signing key is **not** stored in `appsettings.json`. It is read from a
-`.env` file at the backend solution root (`backend/Lumina/.env`, gitignored), loaded
-into environment variables at startup by `DotNetEnv`.
-
-Copy the example and set a real key:
+The backend reads local secrets from `backend/Lumina/.env`. This file is
+gitignored and must never be committed.
 
 ```bash
 cd backend/Lumina
 cp .env.example .env
 ```
 
-Then edit `.env` and set `Jwt__Key` to a strong random secret of **at least 32 characters**:
+Set both required values:
+
+```dotenv
+Jwt__Key="your-strong-random-secret-at-least-32-characters"
+Gemini__ApiKey="your-gemini-api-key"
+```
+
+Generate a suitable JWT key with:
 
 ```bash
-# generates a suitable value
 openssl rand -base64 48
 ```
 
-```dotenv
-Jwt__Key="your-generated-secret-here"
-```
+The Gemini API key stays server-side and is never exposed to the frontend.
+Non-secret Gemini settings, including the default model and request timeout,
+are stored in `backend/Lumina/Lumina/appsettings.json`.
 
-Startup throws a clear error if the key is missing or too short. The non-secret JWT
-settings (issuer, audience, token lifetimes) live in `appsettings.json`.
-
-### 3. Run the backend
+### 2. Apply database migrations and run the backend
 
 From `backend/Lumina`:
 
 ```bash
-# apply migrations (creates lumina.db)
 dotnet ef database update --project Lumina/Lumina.csproj
-
-# run the API
 dotnet run --project Lumina/Lumina.csproj
 ```
 
-The API listens on `http://localhost:5131`.
+The API listens on:
 
-### 4. Run the frontend
+```text
+http://localhost:5131
+```
 
-From `frontend`:
+### 3. Run the frontend
+
+In another terminal:
 
 ```bash
+cd frontend
 npm install
 npm run dev
 ```
 
-The app runs on `http://localhost:5173` and proxies `/api` and `/ws` requests to the
-backend, so make sure the backend (and Ollama) are running too.
+The frontend runs on:
 
-## Run with Docker
-
-Docker Compose runs the frontend and backend in containers. The frontend is
-available at `http://localhost:8080`.
-
-### Ollama running on the host
-
-This is the default mode. Ollama runs natively on your machine, while the backend
-container connects to it through `host.docker.internal:11434`.
-
-From the repository root:
-
-```bash
-cp .env.docker.example .env
+```text
+http://localhost:5173
 ```
 
-Edit `.env` and set `JWT_KEY` to a random value of at least 32 characters. Make
-sure Ollama is running and that the model is available:
+Vite proxies `/api` and `/ws` requests to the backend.
 
-```bash
-ollama serve
-ollama pull qwen3:4b-instruct
+## Gemini Model Selection
+
+The chat model selector loads available models from:
+
+```text
+GET /api/ai/models
 ```
 
-Start the application:
+Each conversation stores its selected model. Existing conversations without a
+stored preference use the configured default model. Changing the selection
+affects subsequent messages and does not interrupt an already-running stream.
 
-```bash
-docker compose up --build
+The default model is configured in:
+
+```json
+{
+  "Gemini": {
+    "DefaultModel": "gemini-flash"
+  }
+}
 ```
 
-### Ollama running in Docker
+## AI-Assisted Document Editing
 
-Use the `ai` Compose profile to run Ollama in its own container:
+Document edits are proposed for user approval rather than applied silently.
+The AI receives the document structure and stable ProseMirror node IDs before
+performing structured edits.
+
+For example, converting a numbered list to bullets changes the list node from
+`orderedList` to `bulletList` while preserving its list items and content. It
+does not add `-` characters to paragraph text to imitate bullets.
+
+Document renaming is an immediate operation. Other content changes remain
+reviewable proposals.
+
+## Ollama Status
+
+Ollama was the original local inference provider. Its service implementation
+and DTOs are still present in the repository, but the current application
+registers `GeminiService` as the active `IAiService`.
+
+Therefore, starting Ollama alone will **not** make it work with the current
+setup. The existing Ollama Docker Compose settings and older Ollama
+instructions are retained as historical configuration, but they are not the
+active provider path.
+
+Ollama support is intended to be added back through the provider-neutral AI
+interface and configuration-based provider selection. Until that work is
+completed, use Gemini for the supported local development setup.
+
+## Testing
+
+Run the backend test suite from the repository root:
 
 ```bash
-OLLAMA_BASE_URL=http://ollama:11434 docker compose --profile ai up --build
+dotnet test backend/Lumina/Lumina.Tests/Lumina.Tests.csproj
 ```
 
-Pull the model into the Ollama container once:
+Build the frontend:
 
 ```bash
-docker compose exec ollama ollama pull qwen3:4b-instruct
+cd frontend
+npm run build
 ```
 
-The `ollama-data` volume preserves the downloaded model weights when the
-container is recreated. The `lumina-data` volume likewise preserves the SQLite
-database. Removing volumes with `docker compose down -v` deletes both.
+## Docker Status
+
+The current backend is configured for Gemini. The existing `docker-compose.yml`
+still contains the older Ollama-oriented setup and should not be treated as a
+complete Gemini deployment configuration yet.
+
+For local development, run the backend and frontend directly as described
+above. Docker support can be updated when provider selection is reintroduced.
+
+## Project Structure
+
+```text
+backend/Lumina/
+  Lumina/              ASP.NET Core application
+  Lumina.Tests/        Backend tests
+frontend/              React + Vite application
+assets/                README preview media
+```
 
 ## Status
 
