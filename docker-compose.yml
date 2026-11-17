@@ -9,9 +9,10 @@ services:
       ConnectionStrings__DefaultConnection: Data Source=/app/data/lumina.db
       Cors__AllowedOrigins__0: http://localhost:8080
       Jwt__Key: ${JWT_KEY:?Set JWT_KEY in .env}
-      Ollama__BaseUrl: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      Ollama__Model: ${OLLAMA_MODEL:-qwen3:4b-instruct}
-      Ollama__TimeoutMinutes: ${OLLAMA_TIMEOUT_MINUTES:-5}
+      Gemini__ApiKey: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env}
+      Gemini__BaseUrl: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com}
+      Gemini__DefaultModel: ${GEMINI_DEFAULT_MODEL:-gemini-flash}
+      Gemini__TimeoutMinutes: ${GEMINI_TIMEOUT_MINUTES:-5}
     volumes:
       - lumina-data:/app/data
     expose:
@@ -26,15 +27,5 @@ services:
     ports:
       - "8080:80"
 
-  ollama:
-    image: ollama/ollama:latest
-    profiles:
-      - ai
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-
 volumes:
   lumina-data:
-  ollama-data:
