@@ -18,8 +18,12 @@ public sealed record AiMessage(
 // arguments.
 public sealed record AiTool(string Name, string Description, JsonElement Parameters);
 
-// A tool call the model decided to make. Arguments is the parsed argument object.
-public sealed record AiToolCall(string Name, JsonElement Arguments);
+// A tool call the model decided to make. Gemini's thought signature is opaque
+// metadata that must be returned with the original function-call part.
+public sealed record AiToolCall(
+    string Name,
+    JsonElement Arguments,
+    string? ThoughtSignature = null);
 
 // One streamed delta from a chat turn: a content fragment, and/or the completed
 // tool-call list (Ollama emits tool calls assembled, not token-by-token).

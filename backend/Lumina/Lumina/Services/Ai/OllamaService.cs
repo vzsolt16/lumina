@@ -22,7 +22,8 @@ public class OllamaService : IAiService
         _numCtx = configuration.GetValue<int?>("Ollama:NumCtx") ?? 8192;
     }
 
-    public async Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000)
+    public async Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000,
+        string? modelId = null)
     {
         var request = new OllamaGenerateRequest
         {
@@ -75,7 +76,8 @@ public class OllamaService : IAiService
     public async IAsyncEnumerable<string> GenerateStreamAsync(
         string prompt,
         int maxTokens = 2000,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default,
+        string? modelId = null)
     {
         var request = new OllamaGenerateRequest
         {
@@ -147,7 +149,8 @@ public class OllamaService : IAiService
         IReadOnlyList<AiMessage> messages,
         IReadOnlyList<AiTool> tools,
         int maxTokens = 4000,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default,
+        string? modelId = null)
     {
         var request = new OllamaChatRequest
         {

@@ -28,6 +28,7 @@ public class ChatHub : Hub
     public async IAsyncEnumerable<ChatStreamEvent> StreamAnswer(
         Guid conversationId,
         string question,
+        string? modelId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(question))
@@ -54,10 +55,43 @@ public class ChatHub : Hub
             throw new HubException("Conversation not found.");
         }
 
-        await foreach (var evt in _chatService
-            .StreamAnswerAsync(conversationId, userId, question, cancellationToken))
+        await using var stream = _chatService
+            .StreamAnswerAsync(conversationId, userId, question, modelId, cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
+        while (true)
         {
-            yield return evt;
+            bool hasNext;
+            try
+            {
+                hasNext = await stream.MoveNextAsync();
+            }
+            catch (KeyNotFoundException ex)
+            {
+                throw new HubException(ex.Message);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                throw new HubException("Gemini is rate limited. Please try again later; Lumina will not switch models automatically.");
+            }
+            catch (HttpRequestException ex) when ((int?)ex.StatusCode >= 500)
+            {
+                throw new HubException("Gemini is temporarily overloaded or unavailable. Please try again shortly.");
+            }
+            catch (HttpRequestException ex) when ((int?)ex.StatusCode >= 400)
+            {
+                throw new HubException("Gemini rejected the tool request. Please try again or check the server log for details.");
+            }
+            catch (HttpRequestException)
+            {
+                throw new HubException("Gemini is currently unavailable. Please try again later.");
+            }
+
+            if (!hasNext)
+            {
+                break;
+            }
+
+            yield return stream.Current;
         }
     }
 }

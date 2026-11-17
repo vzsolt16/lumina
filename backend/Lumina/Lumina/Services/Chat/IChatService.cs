@@ -13,6 +13,12 @@ public interface IChatService
     // KeyNotFoundException if the document isn't the caller's.
     Task<ChatConversationResponse> CreateConversationAsync(Guid documentId, Guid userId);
 
+    Task<string> SetModelAsync(
+        Guid documentId,
+        Guid conversationId,
+        Guid userId,
+        string modelId);
+
     // Returns one conversation's messages, oldest first. Throws
     // KeyNotFoundException if the conversation isn't the caller's or doesn't
     // belong to the given document.
@@ -33,6 +39,7 @@ public interface IChatService
         Guid conversationId,
         Guid userId,
         string question,
+        string? modelId = null,
         CancellationToken cancellationToken = default);
 
     // Applies a pending edit proposal to its document and returns the updated

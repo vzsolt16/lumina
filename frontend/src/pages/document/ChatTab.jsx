@@ -5,6 +5,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   getConversations,
+  getAiModels,
+  setConversationModel,
   createConversation,
   getConversationMessages,
   deleteConversation,
@@ -115,6 +117,9 @@ export default function ChatTab() {
   const [conversations, setConversations] = useState([])
   const [activeId, setActiveId] = useState(null)
   const [messages, setMessages] = useState([]) // { role, content, proposal? }[]
+  const [models, setModels] = useState([])
+  const [defaultModelId, setDefaultModelId] = useState('')
+  const [selectedModelId, setSelectedModelId] = useState('')
 
   const [loadingConvos, setLoadingConvos] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -165,19 +170,29 @@ export default function ChatTab() {
     setConversations([])
     setActiveId(null)
     setMessages([])
+    setModels([])
+    setDefaultModelId('')
+    setSelectedModelId('')
     setConfirmingId(null)
     setLoadingConvos(true)
     setError('')
     setStatus('connecting')
 
-    getConversations(docId)
-      .then((list) => {
+    Promise.all([getConversations(docId), getAiModels()])
+      .then(([list, modelData]) => {
         if (cancelled) return
         const convos = Array.isArray(list) ? list : []
+        const availableModels = Array.isArray(modelData?.models) ? modelData.models : []
+        const fallbackModelId = modelData?.defaultModel || availableModels[0]?.id || ''
+        setModels(availableModels)
+        setDefaultModelId(fallbackModelId)
         setConversations(convos)
         if (convos.length) {
           setActiveId(convos[0].id)
+          setSelectedModelId(convos[0].modelId || fallbackModelId)
           loadMessages(convos[0].id)
+        } else {
+          setSelectedModelId(fallbackModelId)
         }
       })
       .catch(() => {
@@ -235,7 +250,23 @@ export default function ChatTab() {
     setError('')
     setConfirmingId(null)
     setActiveId(id)
+    const conversation = conversations.find((item) => item.id === id)
+    setSelectedModelId(conversation?.modelId || defaultModelId)
     loadMessages(id)
+  }
+
+  async function changeModel(event) {
+    const modelId = event.target.value
+    setSelectedModelId(modelId)
+    if (!activeId) return
+    try {
+      await setConversationModel(docId, activeId, modelId)
+      setConversations((prev) => prev.map((conversation) =>
+        conversation.id === activeId ? { ...conversation, modelId } : conversation,
+      ))
+    } catch (err) {
+      setError(err?.message || 'Could not save the selected model.')
+    }
   }
 
   async function newChat() {
@@ -247,6 +278,7 @@ export default function ChatTab() {
       setConversations((prev) => [convo, ...prev])
       loadSeqRef.current++ // no fetch needed; a fresh conversation is empty
       setActiveId(convo.id)
+      setSelectedModelId(convo.modelId || defaultModelId)
       setMessages([])
     } catch {
       setError('Could not start a new chat.')
@@ -264,6 +296,7 @@ export default function ChatTab() {
       if (id === activeId) {
         if (remaining.length) {
           setActiveId(remaining[0].id)
+          setSelectedModelId(remaining[0].modelId || defaultModelId)
           loadMessages(remaining[0].id)
         } else {
           loadSeqRef.current++
@@ -386,7 +419,7 @@ export default function ChatTab() {
     }
 
     subscriptionRef.current = connection
-      .stream('StreamAnswer', convoId, question)
+      .stream('StreamAnswer', convoId, question, selectedModelId || null)
       .subscribe({
         next: (evt) => {
           // The stream carries typed events: token fragments of the reply, an
@@ -552,9 +585,25 @@ export default function ChatTab() {
       <div className="panel chat-panel">
         <div className="panel-bar">
           <div className="panel-title">Chat</div>
-          <div className={`panel-status${live ? ' live' : ''}`}>
-            {live && <div className="status-dot" />}
-            {statusText}
+          <div className="chat-model-controls">
+            <label htmlFor="chat-model-select">MODEL</label>
+            <select
+              id="chat-model-select"
+              className="chat-model-select"
+              value={selectedModelId}
+              onChange={changeModel}
+              disabled={streaming || models.length === 0}
+            >
+              {models.map((model) => (
+                <option key={model.id} value={model.id} title={model.description || model.name}>
+                  {model.description ? `${model.name} — ${model.description}` : model.name}
+                </option>
+              ))}
+            </select>
+            <div className={`panel-status${live ? ' live' : ''}`}>
+              {live && <div className="status-dot" />}
+              {statusText}
+            </div>
           </div>
         </div>
 
@@ -692,6 +741,19 @@ export default function ChatTab() {
                               </>
                             )
                           })()
+                        ) : m.proposal.kind === 'change_list_type' ? (
+                          <>
+                            <div className="chat-proposal-caption">// LIST FORMAT CHANGE</div>
+                            {m.proposal.target && (
+                              <pre className="chat-proposal-block ctx">{m.proposal.target}</pre>
+                            )}
+                            {m.proposal.replacement && (
+                              <>
+                                <div className="chat-proposal-caption">// CHANGE TO</div>
+                                <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                              </>
+                            )}
+                          </>
                         ) : (
                           <>
                             {m.proposal.target && (

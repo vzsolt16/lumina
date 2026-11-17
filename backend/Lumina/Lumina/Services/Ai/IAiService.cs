@@ -4,7 +4,8 @@ namespace Lumina.Services.AI;
 
 public interface IAiService
 {
-    Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000);
+    Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000,
+        string? modelId = null);
 
     // Streams the model's answer token-by-token as it is generated. Used by the
     // chat feature so the UI can render the reply as it arrives. No structured
@@ -12,7 +13,8 @@ public interface IAiService
     IAsyncEnumerable<string> GenerateStreamAsync(
         string prompt,
         int maxTokens = 2000,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? modelId = null);
 
     // Streams a tool-capable chat turn. Yields content fragments as they arrive
     // and, once per turn, the tool calls the model decided to make. Callers run an
@@ -22,5 +24,6 @@ public interface IAiService
         IReadOnlyList<AiMessage> messages,
         IReadOnlyList<AiTool> tools,
         int maxTokens = 4000,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? modelId = null);
 }

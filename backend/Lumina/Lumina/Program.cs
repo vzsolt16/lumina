@@ -133,15 +133,13 @@ builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IFlashcardService, FlashcardService>();
 builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddSingleton<IGeminiModelCatalog, GeminiModelCatalog>();
 
-var ollamaUrl = builder.Configuration["Ollama:BaseUrl"]
-    ?? throw new InvalidOperationException("Ollama:BaseUrl is not configured.");
-
-builder.Services.AddHttpClient<IAiService, OllamaService>(client =>
+var geminiUrl = builder.Configuration["Gemini:BaseUrl"] ?? "https://generativelanguage.googleapis.com";
+builder.Services.AddHttpClient<IAiService, GeminiService>(client =>
 {
-    client.BaseAddress = new Uri(ollamaUrl);
-    client.Timeout = TimeSpan.FromMinutes(
-        builder.Configuration.GetValue<int>("Ollama:TimeoutMinutes", 5));
+    client.BaseAddress = new Uri(geminiUrl);
+    client.Timeout = TimeSpan.FromMinutes(builder.Configuration.GetValue<int>("Gemini:TimeoutMinutes", 5));
 });
 
 var app = builder.Build();

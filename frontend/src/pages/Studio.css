@@ -62,6 +62,41 @@
   animation: pulse 2s ease-in-out infinite;
 }
 
+.chat-model-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-model-controls label {
+  font-family: var(--font-tech);
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-light);
+}
+
+.chat-model-select {
+  max-width: 190px;
+  padding: 4px 22px 4px 7px;
+  border: 1px solid var(--border-t);
+  background: var(--bg2);
+  color: var(--text-dark);
+  font-family: var(--font-tech);
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.chat-model-select:focus-visible {
+  outline: 1px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.chat-model-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .panel-body {
   padding: 24px;
 }

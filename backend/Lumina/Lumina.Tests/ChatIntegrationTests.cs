@@ -22,6 +22,32 @@ public class ChatIntegrationTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task GetAiModels_ReturnsConfiguredModelsAndDefault()
+    {
+        var response = await _client.GetAsync("/api/ai/models");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<AiModelsResponse>();
+        Assert.Equal("gemini-flash", payload!.DefaultModel);
+        Assert.Contains(payload.Models, model => model.Id == "gemini-flash");
+        Assert.Contains(payload.Models, model => model.Id == "gemini-3-flash-preview");
+        Assert.Contains(payload.Models, model => model.Id == "gemini-flash-lite");
+        Assert.All(payload.Models, model => Assert.DoesNotContain("ApiKey", model.Name));
+    }
+
+    private sealed class AiModelsResponse
+    {
+        public string DefaultModel { get; set; } = string.Empty;
+        public List<AiModelResponse> Models { get; set; } = [];
+    }
+
+    private sealed class AiModelResponse
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    [Fact]
     public async Task CreateConversation_GetConversations_DeleteConversation_Flow()
     {
         // 1. Upload document (needed for chat)
@@ -37,6 +63,11 @@ public class ChatIntegrationTests : IClassFixture<IntegrationTestFactory>
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var conversation = await createResponse.Content.ReadFromJsonAsync<ChatConversationResponse>();
         Assert.NotNull(conversation);
+
+        var invalidModelResponse = await _client.PatchAsJsonAsync(
+            $"/api/documents/{documentId}/chat/conversations/{conversation!.Id}/model",
+            new { modelId = "not-a-gemini-model" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidModelResponse.StatusCode);
 
         // 3. Get conversations
         var getResponse = await _client.GetAsync($"/api/documents/{documentId}/chat/conversations");

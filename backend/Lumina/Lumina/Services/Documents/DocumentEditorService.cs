@@ -102,6 +102,9 @@ public sealed class DocumentEditorService : IDocumentEditorService
             case MoveDocumentNode move:
                 MoveNode(root, move);
                 break;
+            case ChangeListType changeListType:
+                ChangeListNodeType(root, changeListType);
+                break;
             default:
                 throw new InvalidOperationException("Unsupported document operation.");
         }
@@ -256,6 +259,26 @@ public sealed class DocumentEditorService : IDocumentEditorService
         }
 
         newContent.Insert(index, target);
+    }
+
+    private static void ChangeListNodeType(JsonObject root, ChangeListType operation)
+    {
+        if (operation.ListType is not ("bulletList" or "orderedList"))
+        {
+            throw new InvalidOperationException(
+                "A list can only be changed to bulletList or orderedList.");
+        }
+
+        var target = FindNode(root, operation.TargetId, out _, out _)
+            ?? throw new KeyNotFoundException("Document node not found.");
+        var currentType = target["type"]?.GetValue<string>();
+        if (currentType is not ("bulletList" or "orderedList"))
+        {
+            throw new InvalidOperationException(
+                $"Node '{operation.TargetId}' is a {currentType ?? "unknown"} node, not a list.");
+        }
+
+        target["type"] = operation.ListType;
     }
 
     private static JsonObject CreateAttributes(IReadOnlyDictionary<string, JsonElement>? attributes)

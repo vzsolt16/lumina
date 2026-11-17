@@ -24,7 +24,8 @@ public class ChatService : IChatService
     private readonly IDocumentContentConverter _contentConverter;
     private readonly IDocumentContextBuilder _contextBuilder;
     private readonly IDocumentEditorService _documentEditor;
-    private readonly int _numCtx;
+    private readonly IGeminiModelCatalog _modelCatalog;
+    private const int ContextWindow = 16384;
 
     public ChatService(
         IServiceScopeFactory scopeFactory,
@@ -32,14 +33,14 @@ public class ChatService : IChatService
         IDocumentContentConverter contentConverter,
         IDocumentContextBuilder contextBuilder,
         IDocumentEditorService documentEditor,
-        IConfiguration configuration)
+        IGeminiModelCatalog modelCatalog)
     {
         _scopeFactory = scopeFactory;
         _aiService = aiService;
         _contentConverter = contentConverter;
         _contextBuilder = contextBuilder;
         _documentEditor = documentEditor;
-        _numCtx = configuration.GetValue<int?>("Ollama:NumCtx") ?? 8192;
+        _modelCatalog = modelCatalog;
     }
 
     public async Task<List<ChatConversationResponse>> GetConversationsAsync(Guid documentId, Guid userId)
@@ -62,6 +63,7 @@ public class ChatService : IChatService
             {
                 Id = c.Id,
                 Title = c.Title,
+                ModelId = c.ModelId,
                 CreatedAt = c.CreatedAt,
                 UpdatedAt = c.UpdatedAt
             })
@@ -98,9 +100,33 @@ public class ChatService : IChatService
         {
             Id = conversation.Id,
             Title = conversation.Title,
+            ModelId = conversation.ModelId,
             CreatedAt = conversation.CreatedAt,
             UpdatedAt = conversation.UpdatedAt
         };
+    }
+
+    public async Task<string> SetModelAsync(
+        Guid documentId,
+        Guid conversationId,
+        Guid userId,
+        string modelId)
+    {
+        var model = _modelCatalog.Resolve(modelId);
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+        var conversation = await db.ChatConversations.FirstOrDefaultAsync(c =>
+            c.Id == conversationId
+            && c.DocumentId == documentId
+            && c.Document.UserId == userId);
+        if (conversation is null)
+        {
+            throw new KeyNotFoundException("Conversation not found.");
+        }
+
+        conversation.ModelId = model.Id;
+        await db.SaveChangesAsync();
+        return model.Id;
     }
 
     public async Task<List<ChatMessageResponse>> GetMessagesAsync(Guid documentId, Guid conversationId, Guid userId)
@@ -168,6 +194,7 @@ public class ChatService : IChatService
         Guid conversationId,
         Guid userId,
         string question,
+        string? modelId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Guid documentId;
@@ -175,6 +202,7 @@ public class ChatService : IChatService
         string content;
         int contentVersion;
         bool isFirstMessage;
+        string resolvedModelId;
         List<ChatMessage> history;
 
         using (var scope = _scopeFactory.CreateScope())
@@ -196,6 +224,12 @@ public class ChatService : IChatService
             fileName = conversation.Document.FileName;
             content = conversation.Document.Content;
             contentVersion = conversation.Document.ContentVersion;
+            resolvedModelId = _modelCatalog.Resolve(modelId ?? conversation.ModelId).Id;
+            if (modelId is not null && conversation.ModelId != resolvedModelId)
+            {
+                conversation.ModelId = resolvedModelId;
+                await db.SaveChangesAsync(cancellationToken);
+            }
 
             history = await db.ChatMessages
                 .Where(m => m.ConversationId == conversationId)
@@ -211,6 +245,7 @@ public class ChatService : IChatService
             RenameDocumentTool, GetDocumentStructureTool, GetDocumentTextTool,
             GetDocumentNodeTool, ReplaceDocumentNodeTool, InsertDocumentNodeTool,
             DeleteDocumentNodeTool, MoveDocumentNodeTool,
+            ChangeListTypeTool,
             PrependTextTool, AppendTextTool
         };
 
@@ -253,7 +288,8 @@ public class ChatService : IChatService
                 // Headroom for the model's answer so a normal turn isn't cut off
                 // mid-stream.
                 await foreach (var delta in _aiService
-                    .ChatStreamAsync(messages, tools, maxTokens: 4000, cancellationToken: cancellationToken))
+                    .ChatStreamAsync(messages, tools, maxTokens: 4000,
+                        cancellationToken: cancellationToken, modelId: resolvedModelId))
                 {
                     if (delta.ToolCalls is { Count: > 0 } calls)
                     {
@@ -867,6 +903,24 @@ public class ChatService : IChatService
             required = new[] { "target_id", "index" }
         }));
 
+    private static readonly AiTool ChangeListTypeTool = new(
+        "change_list_type",
+        "Propose changing an existing ProseMirror list node between a numbered list "
+        + "(orderedList) and a bulleted list (bulletList). This changes the JSON node type "
+        + "while preserving every list item and its text. Never simulate this by adding "
+        + "asterisks, hyphens, or numbers to paragraph text. First inspect the document "
+        + "structure and use the exact list node ID.",
+        JsonSerializer.SerializeToElement(new
+        {
+            type = "object",
+            properties = new
+            {
+                target_id = new { type = "string" },
+                list_type = new { type = "string", @enum = new[] { "bulletList", "orderedList" } }
+            },
+            required = new[] { "target_id", "list_type" }
+        }));
+
     // Content tools don't change the document directly — they propose an edit the
     // user reviews and applies (see ExecuteToolAsync). Structured arguments are far
     // more reliable for a small model than a freeform marker block in the reply.
@@ -965,6 +1019,8 @@ public class ChatService : IChatService
                 return "Proposing a node deletion";
             case "move_document_node":
                 return "Proposing a node move";
+            case "change_list_type":
+                return "Proposing a list format change";
 
             default:
                 return "Working";
@@ -1173,6 +1229,50 @@ public class ChatService : IChatService
                     targetLabel,
                     destinationLabel,
                     "move_node",
+                    operation,
+                    contentVersion);
+            }
+
+            case "change_list_type":
+            {
+                if (!TryGetStringArg(call, "target_id", out var targetId)
+                    || !TryGetStringArg(call, "list_type", out var listType)
+                    || listType is not ("bulletList" or "orderedList"))
+                {
+                    return ("Error: target_id and list_type (bulletList or orderedList) are required.", null, null);
+                }
+
+                var resolvedTargetId = await ResolveNodeIdAsync(
+                    documentId, userId, targetId, cancellationToken);
+                if (resolvedTargetId is null)
+                {
+                    return ("Error: target_id was not found. Copy the exact list node ID from the document structure.", null, null);
+                }
+
+                var operation = new StoredOperation(
+                    "change_list_type",
+                    resolvedTargetId,
+                    null,
+                    0,
+                    listType,
+                    null);
+                var validationError = await ValidateProposedOperationAsync(
+                    documentId,
+                    userId,
+                    operation,
+                    contentVersion,
+                    cancellationToken);
+                if (validationError is not null)
+                {
+                    return (validationError, null, null);
+                }
+
+                var label = listType == "bulletList" ? "bulleted list" : "numbered list";
+                return CreateStructuredProposal(
+                    $"Proposed changing the list structure to a {label}. The user will review and apply it.",
+                    targetId,
+                    label,
+                    "change_list_type",
                     operation,
                     contentVersion);
             }
@@ -1587,6 +1687,10 @@ public class ChatService : IChatService
                 operation.ParentId,
                 operation.Index,
                 operation.Placement ?? "after"),
+            "change_list_type" => new ChangeListType(
+                version,
+                operation.TargetId!,
+                operation.NodeType!),
             _ => throw new InvalidOperationException("The saved edit operation is unsupported.")
         };
     }
@@ -1603,7 +1707,7 @@ public class ChatService : IChatService
         var operation = JsonSerializer.Deserialize<StoredOperation>(operationJson)
             ?? throw new InvalidOperationException("The saved edit operation is invalid.");
 
-        if (operation.Kind is not ("replace" or "delete" or "move"))
+        if (operation.Kind is not ("replace" or "delete" or "move" or "change_list_type"))
         {
             return operationJson;
         }
@@ -1732,7 +1836,7 @@ public class ChatService : IChatService
         string question)
     {
         var sb = new StringBuilder();
-        var contentBudget = Math.Clamp((_numCtx - 8000) * 2, 8000, 16000);
+        var contentBudget = Math.Clamp((ContextWindow - 8000) * 2, 8000, 16000);
         var boundedContent = LimitContext(content, contentBudget);
 
         sb.AppendLine(
@@ -1781,6 +1885,12 @@ public class ChatService : IChatService
             "also use placement at_index with the container ID and zero-based index; use " +
             "parent_id=null for the document root.");
         sb.AppendLine(
+            "To convert a numbered list to bullets, or bullets to numbers, call change_list_type " +
+            "on the list container node itself: use list_type=\"bulletList\" for bullets or " +
+            "list_type=\"orderedList\" for numbering. This changes the ProseMirror JSON node type " +
+            "and preserves all listItem children and their content. Never add '-', '*', or numbers " +
+            "to the text to imitate a list format.");
+        sb.AppendLine(
             "Images are real document nodes. Their structure entries include an image node ID, " +
             "assetId, and dimensions, but this text-only model cannot see the image pixels. " +
             "Use those exact IDs to reorder images; do not claim that images are absent just " +
@@ -1794,7 +1904,8 @@ public class ChatService : IChatService
         sb.AppendLine(
             "Use replace_document_node to change or delete an existing paragraph, heading, or code " +
             "block; use insert_document_node to add a new block anywhere; use delete_document_node " +
-            "to remove a block; and use move_document_node to reorder blocks.");
+            "to remove a block; use move_document_node to reorder blocks; and use change_list_type " +
+            "for list format changes.");
         sb.AppendLine(
             "- To rename the document, call rename_document.");
         sb.AppendLine(

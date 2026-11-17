@@ -176,6 +176,57 @@ public class DocumentEditorServiceTests
     }
 
     [Fact]
+    public async Task ChangeListType_ChangesOnlyTheListContainerAndPreservesItems()
+    {
+        await using var db = CreateDb();
+        var converter = new ProseMirrorDocumentConverter();
+        var userId = Guid.NewGuid();
+        var document = CreateDocument(userId, converter.Normalize("""
+            {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "orderedList",
+                  "attrs": {"id": "node-11111111111111111111111111111111", "order": 1},
+                  "content": [
+                    {
+                      "type": "listItem",
+                      "attrs": {"id": "node-22222222222222222222222222222222"},
+                      "content": [
+                        {
+                          "type": "paragraph",
+                          "attrs": {"id": "node-33333333333333333333333333333333"},
+                          "content": [{"type": "text", "text": "pear"}]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+            """), converter);
+        db.Documents.Add(document);
+        await db.SaveChangesAsync();
+
+        var service = new DocumentEditorService(db, converter);
+        var result = await service.ApplyOperationAsync(
+            document.Id,
+            userId,
+            new ChangeListType(
+                1,
+                "node-11111111111111111111111111111111",
+                "bulletList"));
+
+        var root = JsonNode.Parse(result.ContentJson)!.AsObject();
+        var list = root["content"]![0]!.AsObject();
+        Assert.Equal("bulletList", list["type"]!.GetValue<string>());
+        Assert.Equal("node-11111111111111111111111111111111", list["attrs"]!["id"]!.GetValue<string>());
+        Assert.Equal("node-22222222222222222222222222222222",
+            list["content"]![0]!["attrs"]!["id"]!.GetValue<string>());
+        Assert.Equal("pear", result.Content);
+    }
+
+    [Fact]
     public async Task ValidateOperation_RejectsSiblingPlacementForAListContainer()
     {
         await using var db = CreateDb();

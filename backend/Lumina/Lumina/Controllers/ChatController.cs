@@ -1,4 +1,5 @@
 using Lumina.Extensions;
+using Lumina.DTOs.Chat;
 using Lumina.Services.Chat;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -63,6 +64,24 @@ public class ChatController : ControllerBase
         catch (KeyNotFoundException)
         {
             return NotFound();
+        }
+    }
+
+    [HttpPatch("{conversationId:guid}/model")]
+    public async Task<IActionResult> SetModel(
+        Guid documentId,
+        Guid conversationId,
+        [FromBody] SetChatModelRequest request)
+    {
+        try
+        {
+            var modelId = await _chatService.SetModelAsync(
+                documentId, conversationId, User.GetUserId(), request.ModelId);
+            return Ok(new { modelId });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return BadRequest(ex.Message);
         }
     }
 

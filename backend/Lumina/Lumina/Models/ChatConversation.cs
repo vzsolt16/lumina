@@ -14,6 +14,8 @@ public class ChatConversation
     // Auto-derived from the first user message; "New chat" until then.
     public string Title { get; set; } = "New chat";
 
+    public string? ModelId { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     // Bumped on every new message so the list can sort most-recent-first.

@@ -94,6 +94,9 @@ namespace Lumina.Migrations
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ModelId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("TEXT");

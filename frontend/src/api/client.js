@@ -277,12 +277,29 @@ export function getQuizzes(documentId) {
 
 /* ─── Chat conversations ───────────────────────────────────────────── */
 
+/** List the Gemini models currently enabled by the backend. */
+export function getAiModels() {
+  return request('/api/ai/models')
+}
+
 /**
  * List a document's chat conversations, most-recently-updated first.
- * @returns {Promise<Array<{ id, title, createdAt, updatedAt }>>}
+ * @returns {Promise<Array<{ id, title, modelId, createdAt, updatedAt }>>}
  */
 export function getConversations(documentId) {
   return request(`/api/documents/${documentId}/chat/conversations`)
+}
+
+/** Persist the selected model for a conversation. */
+export function setConversationModel(documentId, conversationId, modelId) {
+  return request(
+    `/api/documents/${documentId}/chat/conversations/${conversationId}/model`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders,
+      body: JSON.stringify({ modelId }),
+    },
+  )
 }
 
 /**

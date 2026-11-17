@@ -27,3 +27,8 @@ public sealed record MoveDocumentNode(
     string? ParentId,
     int Index,
     string Placement = "after") : DocumentOperation(ExpectedContentVersion);
+
+public sealed record ChangeListType(
+    int ExpectedContentVersion,
+    string TargetId,
+    string ListType) : DocumentOperation(ExpectedContentVersion);
