@@ -179,9 +179,8 @@ and DTOs are still present in the repository, but the current application
 registers `GeminiService` as the active `IAiService`.
 
 Therefore, starting Ollama alone will **not** make it work with the current
-setup. The existing Ollama Docker Compose settings and older Ollama
-instructions are retained as historical configuration, but they are not the
-active provider path.
+setup. The Docker Compose configuration now targets Gemini and no longer
+starts an Ollama container.
 
 Ollama support is intended to be added back through the provider-neutral AI
 interface and configuration-based provider selection. Until that work is
@@ -202,14 +201,31 @@ cd frontend
 npm run build
 ```
 
-## Docker Status
+## Run with Docker
 
-The current backend is configured for Gemini. The existing `docker-compose.yml`
-still contains the older Ollama-oriented setup and should not be treated as a
-complete Gemini deployment configuration yet.
+Docker Compose runs the Gemini-backed backend and frontend. The frontend is
+available at:
 
-For local development, run the backend and frontend directly as described
-above. Docker support can be updated when provider selection is reintroduced.
+```text
+http://localhost:8080
+```
+
+From the repository root:
+
+```bash
+cp .env.docker.example .env
+```
+
+Edit `.env` and set `JWT_KEY` and `GEMINI_API_KEY` to real values, then start
+the application:
+
+```bash
+docker compose up --build
+```
+
+The Gemini API key is injected into the backend container only. Ollama is not
+started by the current Compose configuration because the active backend
+provider is Gemini.
 
 ## Project Structure
 
