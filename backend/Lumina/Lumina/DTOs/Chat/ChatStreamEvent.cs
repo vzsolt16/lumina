@@ -33,6 +33,8 @@ public class ChatStreamEvent
     public string? ToolLabel { get; set; }
     public string? ToolStatus { get; set; }
 
+    public IReadOnlyList<ChatSource>? Sources { get; set; }
+
     public static ChatStreamEvent ForToken(string text) =>
         new() { Type = TokenType, Text = text };
 
@@ -44,4 +46,14 @@ public class ChatStreamEvent
 
     public static ChatStreamEvent ForTool(string name, string label, string status) =>
         new() { Type = ToolType, ToolName = name, ToolLabel = label, ToolStatus = status };
+
+    public static ChatStreamEvent ForSources(IReadOnlyList<ChatSource> sources) =>
+        new() { Type = "sources", Sources = sources };
 }
+
+public sealed record ChatSource(
+    Guid DocumentId,
+    string DocumentName,
+    string? Heading,
+    int ChunkIndex,
+    IReadOnlyList<string> NodeIds);

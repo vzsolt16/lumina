@@ -33,4 +33,7 @@ public class ChatMessage
     public string? ProposalOperationJson { get; set; }
 
     public int? ProposalContentVersion { get; set; }
+
+    // Structured references used to generate this answer, retained for history/API reads.
+    public string? SourcesJson { get; set; }
 }

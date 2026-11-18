@@ -51,6 +51,9 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
             .Property(d => d.ContentVersion)
             .IsConcurrencyToken();
 
+        modelBuilder.Entity<Document>().HasIndex(d => d.IndexingStatus);
+        modelBuilder.Entity<Document>().Property(d => d.IndexingStatus).HasDefaultValue("NotIndexed");
+
         modelBuilder.Entity<Folder>()
             .HasOne(f => f.User)
             .WithMany(u => u.Folders)

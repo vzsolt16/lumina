@@ -37,6 +37,15 @@ public class Document
 
     public int ContentVersion { get; set; } = 1;
 
+    public string IndexingStatus { get; set; } = "NotIndexed";
+    public int? IndexedContentVersion { get; set; }
+    public string? EmbeddingModel { get; set; }
+    public int? VectorDimensions { get; set; }
+    public string? ChunkingVersion { get; set; }
+    public string? ActiveIndexGeneration { get; set; }
+    public DateTime? LastIndexedAt { get; set; }
+    public string? IndexingError { get; set; }
+
     public string ContentType { get; set; } = string.Empty;
 
     public DateTime UploadedAt { get; set; }

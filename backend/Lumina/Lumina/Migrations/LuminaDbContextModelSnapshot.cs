@@ -149,6 +149,9 @@ namespace Lumina.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SourcesJson")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ConversationId");
@@ -160,6 +163,12 @@ namespace Lumina.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ActiveIndexGeneration")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ChunkingVersion")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Content")
@@ -181,6 +190,9 @@ namespace Lumina.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("EmbeddingModel")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -189,6 +201,21 @@ namespace Lumina.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid?>("FolderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("IndexedContentVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("IndexingError")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IndexingStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("NotIndexed");
+
+                    b.Property<DateTime?>("LastIndexedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OriginalContentType")
@@ -209,9 +236,14 @@ namespace Lumina.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("VectorDimensions")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("FolderId");
+
+                    b.HasIndex("IndexingStatus");
 
                     b.HasIndex("UserId");
 

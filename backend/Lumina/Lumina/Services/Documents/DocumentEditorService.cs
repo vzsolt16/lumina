@@ -5,6 +5,7 @@ using Lumina.Data;
 using Lumina.DTOs.Document;
 using Lumina.Models;
 using Microsoft.EntityFrameworkCore;
+using Lumina.Services.Rag;
 
 namespace Lumina.Services.Documents;
 
@@ -17,13 +18,16 @@ public sealed class DocumentEditorService : IDocumentEditorService
 
     private readonly LuminaDbContext _db;
     private readonly IDocumentContentConverter _converter;
+    private readonly IDocumentIndexScheduler? _indexScheduler;
 
     public DocumentEditorService(
         LuminaDbContext db,
-        IDocumentContentConverter converter)
+        IDocumentContentConverter converter,
+        IDocumentIndexScheduler? indexScheduler = null)
     {
         _db = db;
         _converter = converter;
+        _indexScheduler = indexScheduler;
     }
 
     public async Task<DocumentDetailResponse> ApplyOperationAsync(
@@ -55,6 +59,7 @@ public sealed class DocumentEditorService : IDocumentEditorService
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
+            _indexScheduler?.Schedule(document.Id);
         }
         catch (DbUpdateConcurrencyException ex)
         {

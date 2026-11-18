@@ -13,4 +13,6 @@ public class ChatMessageResponse
 
     // Present only on assistant messages that proposed a document edit.
     public EditProposalResponse? Proposal { get; set; }
+
+    public IReadOnlyList<ChatSource>? Sources { get; set; }
 }

@@ -8,6 +8,7 @@ using Lumina.Services.Documents;
 using Lumina.Services.Flashcards;
 using Lumina.Services.Folders;
 using Lumina.Services.Quizzes;
+using Lumina.Services.Rag;
 using Lumina.WebSockets;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -129,6 +130,22 @@ builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IDocumentEditorService, DocumentEditorService>();
 builder.Services.AddSingleton<IDocumentContentConverter, ProseMirrorDocumentConverter>();
 builder.Services.AddSingleton<IDocumentContextBuilder, DocumentContextBuilder>();
+builder.Services.AddSingleton<IDocumentChunker, DocumentChunker>();
+builder.Services.AddSingleton<IDocumentIndexScheduler, DocumentIndexScheduler>();
+builder.Services.AddScoped<IDocumentIndexService, DocumentIndexService>();
+builder.Services.AddScoped<IDocumentContextSelector, DocumentContextSelector>();
+var ollamaEmbeddingUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434/";
+builder.Services.AddHttpClient<IEmbeddingService, OllamaEmbeddingService>(client =>
+{
+    client.BaseAddress = new Uri(ollamaEmbeddingUrl);
+    client.Timeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("Ollama:EmbeddingTimeoutSeconds", 120));
+});
+var qdrantUrl = builder.Configuration["Qdrant:BaseUrl"] ?? "http://localhost:6333/";
+builder.Services.AddHttpClient<IVectorStore, QdrantVectorStore>(client =>
+{
+    client.BaseAddress = new Uri(qdrantUrl);
+    client.Timeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("Qdrant:TimeoutSeconds", 30));
+});
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IFlashcardService, FlashcardService>();
@@ -152,6 +169,12 @@ using (var scope = app.Services.CreateScope())
     await DocumentContentBackfill.RunAsync(
         db,
         scope.ServiceProvider.GetRequiredService<IDocumentContentConverter>());
+}
+
+using (var scope = app.Services.CreateScope())
+{
+    await scope.ServiceProvider.GetRequiredService<IDocumentIndexScheduler>()
+        .RecoverPendingAsync(CancellationToken.None);
 }
 
 // Configure the HTTP request pipeline.

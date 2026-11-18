@@ -4,6 +4,7 @@ using Lumina.Extensions;
 using Lumina.Services.Documents;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Lumina.Services.Rag;
 
 namespace Lumina.Controllers;
 
@@ -14,11 +15,13 @@ public class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _documentService;
     private readonly ILogger<DocumentsController> _logger;
+    private readonly IDocumentIndexScheduler _indexScheduler;
 
-    public DocumentsController(IDocumentService documentService, ILogger<DocumentsController> logger)
+    public DocumentsController(IDocumentService documentService, ILogger<DocumentsController> logger, IDocumentIndexScheduler indexScheduler)
     {
         _documentService = documentService;
         _logger = logger;
+        _indexScheduler = indexScheduler;
     }
 
     [HttpPost]
@@ -159,5 +162,14 @@ public class DocumentsController : ControllerBase
         }
 
         return NoContent();
+    }
+
+    [HttpPost("{id:guid}/reindex")]
+    public async Task<IActionResult> Reindex(Guid id, CancellationToken cancellationToken)
+    {
+        var owned = await _documentService.GetByIdAsync(id, User.GetUserId(), cancellationToken);
+        if (owned is null) return NotFound();
+        _indexScheduler.Schedule(id);
+        return Accepted();
     }
 }

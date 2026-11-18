@@ -4,6 +4,7 @@ using Lumina.Data;
 using Lumina.DTOs.Document;
 using Lumina.Models;
 using Microsoft.EntityFrameworkCore;
+using Lumina.Services.Rag;
 
 namespace Lumina.Services.Documents;
 
@@ -14,19 +15,25 @@ public class DocumentService : IDocumentService
     private readonly IFileStorage _fileStorage;
     private readonly IDocumentContentConverter _contentConverter;
     private readonly ILogger<DocumentService> _logger;
+    private readonly IDocumentIndexScheduler _indexScheduler;
+    private readonly IVectorStore _vectorStore;
 
     public DocumentService(
         LuminaDbContext db,
         DocumentContentExtractor contentExtractor,
         IFileStorage fileStorage,
         IDocumentContentConverter contentConverter,
-        ILogger<DocumentService> logger)
+        ILogger<DocumentService> logger,
+        IDocumentIndexScheduler indexScheduler,
+        IVectorStore vectorStore)
     {
         _db = db;
         _contentExtractor = contentExtractor;
         _fileStorage = fileStorage;
         _contentConverter = contentConverter;
         _logger = logger;
+        _indexScheduler = indexScheduler;
+        _vectorStore = vectorStore;
     }
 
     public async Task<Document> UploadAsync(
@@ -111,6 +118,7 @@ public class DocumentService : IDocumentService
                 }
             }
             await _db.SaveChangesAsync(cancellationToken);
+            _indexScheduler.Schedule(document.Id);
             return document;
         }
         catch
@@ -232,6 +240,13 @@ public class DocumentService : IDocumentService
             return false;
         }
 
+        try { await _vectorStore.DeleteDocumentAsync(id, cancellationToken); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Vector cleanup failed; preserving document {DocumentId} so deletion can be retried", id);
+            throw new InvalidOperationException("The document could not be deleted because its search index could not be cleaned up. Please retry.", ex);
+        }
+
         var assetKeys = await _db.DocumentAssets
             .Where(a => a.DocumentId == id)
             .Select(a => a.StorageKey)
@@ -288,6 +303,7 @@ public class DocumentService : IDocumentService
         }
 
         var changed = false;
+        var contentChanged = false;
         if (request.FileName is not null)
         {
             var name = DocumentValidation.PreserveExtension(document.FileName, request.FileName);
@@ -301,7 +317,9 @@ public class DocumentService : IDocumentService
 
         if (request.Content is not null)
         {
-            changed |= DocumentContentMutation.Apply(document, request.Content, _contentConverter);
+            var didChange = DocumentContentMutation.Apply(document, request.Content, _contentConverter);
+            changed |= didChange;
+            contentChanged |= didChange;
         }
 
         if (request.ContentJson is not null)
@@ -331,6 +349,7 @@ public class DocumentService : IDocumentService
                 document.ContentSize = Encoding.UTF8.GetByteCount(content);
                 document.ContentVersion++;
                 changed = true;
+                contentChanged = true;
             }
         }
 
@@ -338,6 +357,7 @@ public class DocumentService : IDocumentService
         {
             document.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
+            if (contentChanged) _indexScheduler.Schedule(document.Id);
         }
 
         return ToDetailResponse(document);
