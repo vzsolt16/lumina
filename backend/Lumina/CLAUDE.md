@@ -35,6 +35,12 @@ Tests live in `Lumina.Tests/` (xUnit). Run them from the solution root:
 dotnet test Lumina.Tests/Lumina.Tests.csproj
 ```
 
+Chat loop and chat-service integration coverage can be run alone with:
+
+```bash
+dotnet test Lumina.Tests/Lumina.Tests.csproj --filter "FullyQualifiedName~ChatOrchestratorTests|FullyQualifiedName~ChatServiceOrchestrationTests"
+```
+
 Pure-logic helpers in service classes are tested as `internal static` methods — `InternalsVisibleTo("Lumina.Tests")` is declared in `Lumina/Properties/AssemblyInfo.cs`. When adding a new service with non-trivial pure logic (validation, tree algorithms, parsing), add unit tests for those helpers in `Lumina.Tests/`.
 
 ## Configuration & secrets
@@ -50,11 +56,11 @@ To set up locally: copy `.env.example` → `.env` and set a key of at least 32 c
 short. The non-secret `Jwt` settings (issuer, audience, token lifetimes) stay in
 `appsettings.json`.
 
-## External dependency: Ollama
+## External AI services
 
-The AI layer calls a local Ollama instance at `http://localhost:11434`. It must be running before starting the app. The model is configured in `appsettings.json` under `Ollama:Model` (currently `qwen3:4b-instruct`). The HTTP client timeout is 5 minutes to accommodate slow local inference.
+The active `IAiService` runtime registration is `GeminiService` in `Program.cs`. Gemini supplies generation, streamed chat, and tool calling; configure `Gemini:ApiKey`, `Gemini:DefaultModel`, and `Gemini:TimeoutMinutes`. `OllamaService` remains implemented but is not registered as the active AI provider.
 
-`qwen3:4b-instruct` honours the `think: false` API flag, so both `GenerateAsync` and `GenerateStreamAsync` pass it and receive clean responses with no `<think>` blocks. `AiJsonParser` still contains a think-block stripping regex as a safety net, but it is a no-op in practice.
+Ollama is used for local embeddings through `OllamaEmbeddingService` at `Ollama:BaseUrl` (default `http://localhost:11434/`), with the model configured by `Ollama:EmbeddingModel`. Qdrant stores document vectors. A working Ollama instance and Qdrant service are required for indexing and semantic retrieval, but not for Gemini text generation itself.
 
 ## Authentication & authorization
 
@@ -74,29 +80,28 @@ Lumina is a study-assistant API. Users upload documents (`.txt`, `.md`, `.pdf` a
 
 1. `POST /api/documents/{documentId}/quizzes` → `QuizzesController` creates a `QuizJob` (status: `Processing`) and enqueues a work item on `IBackgroundTaskQueue`.
 2. `QuizBackgroundWorker` (a `BackgroundService`) dequeues and executes the work item, calling `QuizService.ProcessQuizJobAsync`.
-3. `QuizService` starts a simulated progress timer (fires every 1.5 s, increments `QuizJob.Progress` by 5%, caps at 90%) and runs a single Ollama call to generate all 5 questions at once.
+3. `QuizService` starts a simulated progress timer (fires every 1.5 s, increments `QuizJob.Progress` by 5%, caps at 90%) and runs a single `IAiService.GenerateAsync` call (Gemini at runtime) to generate all 5 questions at once.
 4. On completion the timer is cancelled, progress is set to 100, and the quiz is persisted as `Quiz` + `QuizQuestion` rows.
 5. Real-time updates are pushed to the frontend via SignalR (`QuizHub` at `/ws/quiz`). After connecting, the client calls `JoinQuizGroup(jobId)` — the group is keyed by the `QuizJob` id (returned from the POST as `quizId`), and the join is rejected unless that job belongs to one of the caller's own documents. The hub emits three events: `Progress` (incremental ticks), `Completed` (with the full quiz payload), and `Failed`.
 
 **Why all 5 questions are generated in one AI call:** generating them one at a time caused the model to repeat the same question, because each independent call latched onto the same salient fact. A single prompt forces the model to diversify within the same response.
 
-**Quiz question shape:** each `QuizQuestion` has `AnswerA`–`AnswerD` (the four options) and `CorrectAnswer` (the letter `"A"`, `"B"`, `"C"`, or `"D"`). The Ollama structured-output schema enforces this with a JSON Schema `enum`.
+**Quiz question shape:** each `QuizQuestion` has `AnswerA`–`AnswerD` (the four options) and `CorrectAnswer` (the letter `"A"`, `"B"`, `"C"`, or `"D"`). The generation schema constrains the answer to a JSON Schema `enum` through the active Gemini provider.
 
-**AI service:** `OllamaService` implements `IAiService` and has a hardcoded `QuizSchema` (`JsonElement`) passed as Ollama's `format` parameter for structured output. If the quiz question shape changes, update both `QuizSchema` and `GeneratedQuizQuestionDto`. `IAiService` exposes two methods: `GenerateAsync` (one-shot, used by quiz/flashcards) and `GenerateStreamAsync` (token stream, used by chat).
+**AI service:** `IAiService` is the provider boundary. Both `GeminiService` and `OllamaService` implement it; `Program.cs` currently registers Gemini. Quiz/flashcard generation uses `GenerateAsync` with a JSON schema, and chat uses `ChatStreamAsync`. `AiMessage`, `AiTool`, `AiToolCall`, and `AiChatDelta` are provider-neutral contracts. Provider-specific request/response formats and streaming differences stay inside each provider implementation.
 
 **Chat ("chat with your document") — a different shape from quiz/flashcards.** Chat is a direct request/response stream, **not** a background job, so it does not use `IBackgroundTaskQueue` or the group/replay hub pattern.
 
-1. The client opens `/ws/chat` (`ChatHub`) and calls `StreamAnswer(conversationId, question)`, a native SignalR streaming method returning `IAsyncEnumerable<string>`. SignalR injects the `CancellationToken` and trips it on client unsubscribe/disconnect.
-2. `ChatHub` validates conversation ownership, then delegates to `ChatService.StreamAnswerAsync`, which loads the conversation's document + prior `ChatMessage` history (scoped to that conversation), builds the prompt (full `Document.Content` + history + question), and streams tokens from `OllamaService.GenerateStreamAsync`.
-3. **History persistence:** the user message and assistant reply are saved together **only on clean completion** (tracked by a `completed` flag in a `try`/`finally`). On an error or mid-stream disconnect, nothing is persisted — so history never contains a truncated reply that would poison later prompts. On a clean save the conversation's `UpdatedAt` is bumped (so it sorts to the top of the list) and, on the first exchange, its `Title` is auto-derived from the opening question.
+1. The client opens `/ws/chat` (`ChatHub`) and calls `StreamAnswer(conversationId, question, modelId)`, a native SignalR streaming method returning typed `ChatStreamEvent`s. SignalR injects the `CancellationToken` and cancels it when the client unsubscribes or disconnects.
+2. `ChatHub` validates conversation ownership, then delegates to `ChatService.StreamAnswerAsync`. ChatService loads the document and prior `ChatMessage` history in a short-lived DI scope, chooses the conversation model through `GeminiModelCatalog`, and asks `IDocumentContextSelector` for full-document or current RAG context.
+3. `ChatService` builds the system prompt, messages, and existing tool definitions. `ChatOrchestrator` owns the streamed model-turn loop, sequential tool coordination, cancellation, repeated-call protection, model-turn limit (5), tool-execution limit (20), and orchestration logging. It delegates each tool call to ChatService's document-specific executor and returns typed events; it does not manipulate documents or query Qdrant.
+4. Tool results carry a structured outcome (`Succeeded`, `InvalidArguments`, `NotFound`, `ToolNotFound`, `Failed`, `NeedsContext`, or `Blocked`) as well as explanatory text for the model. Repeated calls are fingerprinted by tool name plus canonicalized JSON arguments. An identical call is blocked if no assistant content or other successful tool result has advanced the request. A new turn with meaningful assistant content can retry a read.
+5. Tool calls remain sequential. Provider failures propagate and do not save an incomplete user/assistant exchange. Cancellation is passed to both provider streaming and tool execution. The model-turn and tool-execution limits are independent. Logs include conversation/model IDs, request/turn duration, tool name, outcome, argument/output sizes, and counts; document content and conversation history are not logged. Provider token usage is not currently exposed by `AiChatDelta`.
+6. **History persistence:** the user message and assistant reply are saved together **only on clean completion** (tracked by a `completed` flag in a `try`/`finally`). On an error or mid-stream disconnect, nothing is persisted. On a clean save the conversation's `UpdatedAt` is bumped and, on the first exchange, its `Title` is derived from the opening question.
 
-**AI edit proposals:** the chat prompt teaches the model a marker-block format (`<<<EDIT_TARGET>>>` / `<<<EDIT_REPLACEMENT>>>` / `<<<EDIT_END>>>` — raw text, not JSON, because a small model mangles JSON escaping in multiline strings) for proposing document edits. `EditProposalStreamFilter` (internal, unit-tested) splits the token stream into visible prose and the trailing block, withholding partial-marker tails; malformed blocks are flushed back as visible text. `ChatService` validates the target exists verbatim — and exactly once, so apply can't hit the wrong passage — in `Document.Content` before emitting a proposal. The hub therefore streams `ChatStreamEvent` objects (`token` / `proposal`), not plain strings. Proposals persist on `ChatMessage` (`ProposalTarget` / `ProposalReplacement` / `ProposalStatus`: pending → applied/rejected) and are resolved via `POST .../conversations/{cid}/messages/{mid}/proposal/apply|reject` — apply re-finds the target in the *current* content (409 via `InvalidOperationException` if the document changed and the target is now missing or ambiguous) and rewrites the document server-side; the model itself has no write path.
+**AI edit proposals:** document mutation remains in ChatService and `DocumentEditorService`; the model has no direct write path. Existing content tools validate deterministic `DocumentOperation`s and create pending proposals. Proposal apply checks the expected `ContentVersion` (an EF concurrency token), preserves unrelated document content, synchronizes `Content` from `ContentJson`, increments the version, and schedules reindexing. The user must approve edits; rename is the existing immediate-action exception. `ChatOrchestrator` stops requesting model turns after a proposal is created so approval remains the next decision.
 
 **Multi-conversation model:** a `Document` has many `ChatConversation`s; each `ChatConversation` has many `ChatMessage`s (`ChatMessage` links to `ChatConversation`, not directly to `Document`). Cascade chain: `Document → ChatConversation → ChatMessage`. `ChatController` (`api/documents/{documentId}/chat/conversations`) exposes: `GET /` (list, newest-updated first), `POST /` (create empty conversation), `GET /{conversationId}/messages` (one thread's history), `DELETE /{conversationId}` (delete, cascades messages). Conversations start titled `"New chat"`.
-4. **Scoping:** like the background workers, `ChatService` does **not** hold the request-scoped `DbContext` across the (potentially minutes-long) stream. It injects `IServiceScopeFactory` and opens a fresh short-lived scope per DB operation (initial load; final save).
-5. **Token streaming:** `GenerateStreamAsync` passes `think: false` to Ollama (honoured by `qwen3:4b-instruct`), so tokens are streamed directly with no think-block buffering or stripping.
-6. **Prompt:** lives in `ChatService.BuildPrompt`. Document content is injected wholesale ("start simple"; this is the single method to change when adding RAG). It handles greetings/identity questions and permits general knowledge when the document doesn't cover something, while forbidding fabricated claims about the document itself.
-
 **Database:** SQLite (`lumina.db` in the project folder). EF Core with `OnDelete: Cascade` on all document-owned collections, plus `Document → User` and `RefreshToken → User`. Also holds the ASP.NET Core Identity tables and `RefreshTokens`. Migrations live in `Lumina/Migrations/`.
 
 **Scoping:** `IQuizService` / `IFlashcardService` are registered as `Scoped`, but the background work runs outside any request scope. The controller therefore captures `IServiceScopeFactory` and, inside the queued work item, creates a fresh DI scope (`_scopeFactory.CreateScope()`) to resolve the scoped service before calling `Process…JobAsync`. `QuizBackgroundWorker` itself just dequeues and invokes the work-item delegate.

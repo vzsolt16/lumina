@@ -21,7 +21,7 @@ public class ChatService : IChatService
     // scoped LuminaDbContext, we create a fresh short-lived scope per DB
     // operation — the same convention the background workers use (see CLAUDE.md).
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IAiService _aiService;
+    private readonly ChatOrchestrator _orchestrator;
     private readonly IDocumentContentConverter _contentConverter;
     private readonly IDocumentContextBuilder _contextBuilder;
     private readonly IDocumentEditorService _documentEditor;
@@ -31,7 +31,7 @@ public class ChatService : IChatService
 
     public ChatService(
         IServiceScopeFactory scopeFactory,
-        IAiService aiService,
+        ChatOrchestrator orchestrator,
         IDocumentContentConverter contentConverter,
         IDocumentContextBuilder contextBuilder,
         IDocumentEditorService documentEditor,
@@ -40,7 +40,7 @@ public class ChatService : IChatService
         ILogger<ChatService> logger)
     {
         _scopeFactory = scopeFactory;
-        _aiService = aiService;
+        _orchestrator = orchestrator;
         _contentConverter = contentConverter;
         _contextBuilder = contextBuilder;
         _documentEditor = documentEditor;
@@ -278,144 +278,92 @@ public class ChatService : IChatService
         int? proposalContentVersion = null;
         var proposalCreated = false;
         var completed = false;
-        var seenContent = false;
         // Set once a tool mutates the document (rename), so we can still show a
         // confirmation if the model produces no visible reply.
         var toolMutatedDoc = false;
+        var turnLimitReached = false;
 
         try
         {
-            // The model may take several turns: call a tool, get the result, then
-            // produce its final answer. Loop until a turn makes no tool calls (the
-            // visible answer). The cap is a backstop against a model that never
-            // stops calling tools.
-            const int maxTurns = 5;
-            for (var turn = 0; turn < maxTurns; turn++)
+            async Task<ToolExecutionResult> ExecuteForOrchestratorAsync(
+                AiToolCall call, CancellationToken ct)
             {
-                var toolCalls = new List<AiToolCall>();
-                // The raw content of this turn, kept so the assistant tool-call
-                // message we send back mirrors what the model actually produced.
-                var rawTurnText = new StringBuilder();
-
-                // Headroom for the model's answer so a normal turn isn't cut off
-                // mid-stream.
-                await foreach (var delta in _aiService
-                    .ChatStreamAsync(messages, tools, maxTokens: 4000,
-                        cancellationToken: cancellationToken, modelId: resolvedModelId))
+                var toolExecution = await ExecuteToolAsync(
+                    call, documentId, userId, content, contentVersion, question, ct);
+                var resultText = toolExecution.ResultText;
+                var executionStatus = toolExecution.Status;
+                var updatedDoc = toolExecution.UpdatedDocument;
+                var proposalDraft = toolExecution.Proposal;
+                EditProposalResponse? proposalEvent = null;
+                var stopAfterTurn = toolExecution.StopAfterTurn;
+                if (proposalDraft is not null)
                 {
-                    if (delta.ToolCalls is { Count: > 0 } calls)
+                    if (proposalCreated)
                     {
-                        toolCalls.AddRange(calls);
+                        resultText = "Error: a change has already been proposed in this reply; only one is allowed. Do not propose another.";
+                        executionStatus = ToolExecutionStatus.Blocked;
                     }
-
-                    if (delta.Content is { Length: > 0 } token)
+                    else
                     {
-                        rawTurnText.Append(token);
-
-                        // Stream visible answer fragments as Ollama produces them.
-                        // Tool-call turns are expected to contain no user-facing
-                        // prose; rawTurnText is still retained for the assistant
-                        // tool-call message sent back to the model.
-                        var chunk = token;
-                        if (!seenContent)
+                        var draft = proposalDraft.Value;
+                        proposalCreated = true;
+                        proposalTarget = draft.Target;
+                        proposalReplacement = draft.Replacement;
+                        proposalKind = draft.Kind;
+                        proposalOperationJson = draft.OperationJson;
+                        proposalContentVersion = draft.ContentVersion;
+                        proposalEvent = new EditProposalResponse
                         {
-                            chunk = chunk.TrimStart();
-                            if (chunk.Length == 0)
+                            MessageId = assistantMessageId,
+                            Target = draft.Target,
+                            Replacement = draft.Replacement,
+                            Status = EditProposalStatus.Pending,
+                            Kind = draft.Kind,
+                            ContentVersion = draft.ContentVersion,
+                            TargetId = GetStoredOperation(draft.OperationJson)?.TargetId,
+                            ParentId = GetStoredOperation(draft.OperationJson)?.ParentId,
+                            Placement = GetStoredOperation(draft.OperationJson)?.Placement
+                        };
+                        stopAfterTurn = true;
+                    }
+                }
+                return new ToolExecutionResult(
+                    executionStatus, resultText, stopAfterTurn,
+                    new ToolExecutionMetadata(updatedDoc, proposalEvent));
+            }
+
+            await foreach (var orchestrationEvent in _orchestrator.RunAsync(
+                conversationId, resolvedModelId, messages, tools, ExecuteForOrchestratorAsync, cancellationToken))
+            {
+                switch (orchestrationEvent.Kind)
+                {
+                    case ChatOrchestrationEventKind.Token:
+                        visible.Append(orchestrationEvent.Text);
+                        yield return ChatStreamEvent.ForToken(orchestrationEvent.Text!);
+                        break;
+                    case ChatOrchestrationEventKind.ToolStarted:
+                        var runningCall = orchestrationEvent.ToolCall!;
+                        yield return ChatStreamEvent.ForTool(runningCall.Name, ToolActivityLabel(runningCall), ChatStreamEvent.ToolRunning);
+                        break;
+                    case ChatOrchestrationEventKind.ToolCompleted:
+                        var completedCall = orchestrationEvent.ToolCall!;
+                        var label = ToolActivityLabel(completedCall);
+                        yield return ChatStreamEvent.ForTool(completedCall.Name, label, ChatStreamEvent.ToolDone);
+                        if (orchestrationEvent.ToolResult?.Metadata is ToolExecutionMetadata metadata)
+                        {
+                            if (metadata.UpdatedDocument is not null)
                             {
-                                continue;
+                                toolMutatedDoc = true;
+                                yield return ChatStreamEvent.ForDocument(metadata.UpdatedDocument);
                             }
-
-                            seenContent = true;
+                            if (metadata.Proposal is not null)
+                                yield return ChatStreamEvent.ForProposal(metadata.Proposal);
                         }
-
-                        visible.Append(chunk);
-                        yield return ChatStreamEvent.ForToken(chunk);
-                    }
-                }
-
-                // No tool calls → this turn was the visible answer; stop looping.
-                if (toolCalls.Count == 0)
-                {
-
-                    break;
-                }
-
-                // The model asked to use tools. Record its request, run each tool,
-                // and feed the results back so the next turn can answer with them.
-                messages.Add(new AiMessage("assistant", rawTurnText.ToString(), ToolCalls: toolCalls));
-
-                var stopAfterProposal = false;
-                foreach (var call in toolCalls)
-                {
-                    // Surface the tool call so the UI can show progress (e.g.
-                    // "Renaming document…") during the pause before the reply.
-                    var label = ToolActivityLabel(call);
-                    yield return ChatStreamEvent.ForTool(call.Name, label, ChatStreamEvent.ToolRunning);
-
-                    var (resultText, updatedDoc, proposalDraft) = await ExecuteToolAsync(
-                        call, documentId, userId, content, contentVersion, question, cancellationToken);
-
-                    // A content tool proposes (never directly applies) a change. Keep
-                    // only the first proposal per reply and turn it into the pending
-                    // proposal the client renders; tell the model it's proposed, not
-                    // done, so it confirms rather than claiming success.
-                    EditProposalResponse? proposalEvent = null;
-                    if (proposalDraft is not null)
-                    {
-                        if (proposalCreated)
-                        {
-                            resultText = "Error: a change has already been proposed in this reply; "
-                                + "only one is allowed. Do not propose another.";
-                        }
-                        else
-                        {
-                            var draft = proposalDraft.Value;
-                            proposalCreated = true;
-                            proposalTarget = draft.Target;
-                            proposalReplacement = draft.Replacement;
-                            proposalKind = draft.Kind;
-                            proposalOperationJson = draft.OperationJson;
-                            proposalContentVersion = draft.ContentVersion;
-                            proposalEvent = new EditProposalResponse
-                            {
-                                MessageId = assistantMessageId,
-                                Target = draft.Target,
-                                Replacement = draft.Replacement,
-                                Status = EditProposalStatus.Pending,
-                                Kind = draft.Kind
-                                ,
-                                ContentVersion = draft.ContentVersion,
-                                TargetId = GetStoredOperation(draft.OperationJson)?.TargetId,
-                                ParentId = GetStoredOperation(draft.OperationJson)?.ParentId,
-                                Placement = GetStoredOperation(draft.OperationJson)?.Placement
-                            };
-                            stopAfterProposal = true;
-                        }
-                    }
-
-                    messages.Add(new AiMessage("tool", resultText, ToolName: call.Name));
-
-                    yield return ChatStreamEvent.ForTool(call.Name, label, ChatStreamEvent.ToolDone);
-
-                    // rename applies immediately; tell the client so the header and
-                    // Content tab refresh.
-                    if (updatedDoc is not null)
-                    {
-                        toolMutatedDoc = true;
-                        yield return ChatStreamEvent.ForDocument(updatedDoc);
-                    }
-
-                    if (proposalEvent is not null)
-                    {
-                        yield return ChatStreamEvent.ForProposal(proposalEvent);
-                    }
-                }
-
-                // Once a valid proposal is visible, approval is now the user's
-                // decision. Do not spend another model turn re-checking it.
-                if (stopAfterProposal)
-                {
-                    break;
+                        break;
+                    case ChatOrchestrationEventKind.TurnLimitReached:
+                    case ChatOrchestrationEventKind.ToolLimitReached:
+                        turnLimitReached = true;
+                        break;
                 }
             }
 
@@ -427,6 +375,8 @@ public class ChatService : IChatService
                     ? "I've proposed the change above — review it and apply it when you're ready."
                     : toolMutatedDoc
                         ? "Done — I made the change."
+                        : turnLimitReached
+                            ? "I reached the limit for this response before finishing. Please ask me to continue."
                         : null;
                 if (fallback is not null)
                 {
@@ -993,6 +943,26 @@ public class ChatService : IChatService
         string? OperationJson = null,
         int? ContentVersion = null);
 
+    private sealed record ChatToolExecution(
+        ToolExecutionStatus Status,
+        string ResultText,
+        DocumentDetailResponse? UpdatedDocument = null,
+        ProposalDraft? Proposal = null,
+        bool StopAfterTurn = false);
+
+    private static ChatToolExecution ToolSucceeded(
+        string text, DocumentDetailResponse? document = null, ProposalDraft? proposal = null, bool stopAfterTurn = false) =>
+        new(ToolExecutionStatus.Succeeded, text, document, proposal, stopAfterTurn);
+
+    private static ChatToolExecution ToolInvalid(string text) => new(ToolExecutionStatus.InvalidArguments, text);
+    private static ChatToolExecution ToolNotFound(string text) => new(ToolExecutionStatus.NotFound, text);
+    private static ChatToolExecution ToolBlocked(string text) => new(ToolExecutionStatus.Blocked, text);
+
+    private sealed record ToolExecutionMetadata(
+        DocumentDetailResponse? UpdatedDocument,
+        EditProposalResponse? Proposal);
+
+
     private sealed record StoredOperation(
         string Kind,
         string? TargetId,
@@ -1045,10 +1015,9 @@ public class ChatService : IChatService
 
     // Runs a tool the model called. Returns the text fed back to the model, the
     // updated document if the tool changed it directly (rename), and a proposed
-    // change if it's a content tool (applied later, only if the user accepts). Bad
-    // arguments / unknown tools come back as an error string the model can recover
-    // from — this never throws.
-    private async Task<(string ResultText, DocumentDetailResponse? UpdatedDoc, ProposalDraft? Proposal)> ExecuteToolAsync(
+    // change if it's a content tool. The outcome remains structured independently
+    // of the explanatory text sent back to the provider.
+    private async Task<ChatToolExecution> ExecuteToolAsync(
         AiToolCall call,
         Guid documentId,
         Guid userId,
@@ -1070,14 +1039,14 @@ public class ChatService : IChatService
                 if (!TryGetStringArg(call, "target_id", out var targetId)
                     || !TryGetStringArg(call, "new_text", out var newText))
                 {
-                    return ("Error: target_id and new_text are required.", null, null);
+                    return ToolInvalid("Error: target_id and new_text are required.");
                 }
 
                 var resolvedTargetId = await ResolveNodeIdAsync(
                     documentId, userId, targetId, cancellationToken);
                 if (resolvedTargetId is null)
                 {
-                    return ("Error: target_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.", null, null);
+                    return ToolNotFound("Error: target_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.");
                 }
 
                 var operation = new StoredOperation(
@@ -1095,7 +1064,7 @@ public class ChatService : IChatService
                     cancellationToken);
                 if (validationError is not null)
                 {
-                    return (validationError, null, null);
+                    return validationError;
                 }
 
                 return CreateStructuredProposal(
@@ -1114,7 +1083,7 @@ public class ChatService : IChatService
                     || !TryGetStringArg(call, "node_type", out var nodeType)
                     || !TryGetStringArg(call, "content", out var nodeContent))
                 {
-                    return ("Error: index, node_type, and content are required.", null, null);
+                    return ToolInvalid("Error: index, node_type, and content are required.");
                 }
 
                 var resolvedParentId = parentId is null
@@ -1122,7 +1091,7 @@ public class ChatService : IChatService
                     : await ResolveNodeIdAsync(documentId, userId, parentId, cancellationToken);
                 if (parentId is not null && resolvedParentId is null)
                 {
-                    return ("Error: parent_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.", null, null);
+                    return ToolNotFound("Error: parent_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.");
                 }
 
                 var operation = new StoredOperation(
@@ -1135,7 +1104,7 @@ public class ChatService : IChatService
                     cancellationToken);
                 if (validationError is not null)
                 {
-                    return (validationError, null, null);
+                    return validationError;
                 }
 
                 return CreateStructuredProposal(
@@ -1151,7 +1120,7 @@ public class ChatService : IChatService
             {
                 if (!TryGetStringArg(call, "target_id", out var targetId))
                 {
-                    return ("Error: target_id is required.", null, null);
+                    return ToolInvalid("Error: target_id is required.");
                 }
 
                 var requestedTarget = await ResolveDeleteTargetFromQuestionAsync(
@@ -1168,7 +1137,7 @@ public class ChatService : IChatService
                     cancellationToken);
                 if (validationError is not null)
                 {
-                    return (validationError, null, null);
+                    return validationError;
                 }
 
                 var targetLabel = requestedTarget?.Label
@@ -1189,7 +1158,7 @@ public class ChatService : IChatService
                     || !TryGetOptionalStringArg(call, "parent_id", out var parentId)
                     || !TryGetIntArg(call, "index", out var index))
                 {
-                    return ("Error: target_id and index are required.", null, null);
+                    return ToolInvalid("Error: target_id and index are required.");
                 }
 
                 var placement = TryGetOptionalStringArg(call, "placement", out var requestedPlacement)
@@ -1197,7 +1166,7 @@ public class ChatService : IChatService
                     : "after";
                 if (placement is not ("before" or "after" or "at_index"))
                 {
-                    return ("Error: placement must be before, after, or at_index.", null, null);
+                    return ToolInvalid("Error: placement must be before, after, or at_index.");
                 }
 
                 var resolvedTargetId = await ResolveNodeIdAsync(
@@ -1207,12 +1176,12 @@ public class ChatService : IChatService
                     : await ResolveNodeIdAsync(documentId, userId, parentId, cancellationToken);
                 if (resolvedTargetId is null)
                 {
-                    return ("Error: target_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.", null, null);
+                    return ToolNotFound("Error: target_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.");
                 }
 
                 if (parentId is not null && resolvedParentId is null)
                 {
-                    return ("Error: parent_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.", null, null);
+                    return ToolNotFound("Error: parent_id was not found. Copy the complete node ID, including the 'node-' prefix, from the document structure.");
                 }
 
                 var operation = new StoredOperation(
@@ -1225,7 +1194,7 @@ public class ChatService : IChatService
                     cancellationToken);
                 if (validationError is not null)
                 {
-                    return (validationError, null, null);
+                    return validationError;
                 }
 
                 var targetLabel = await GetNodeLabelAsync(documentId, userId, resolvedTargetId, cancellationToken);
@@ -1255,14 +1224,14 @@ public class ChatService : IChatService
                     || !TryGetStringArg(call, "list_type", out var listType)
                     || listType is not ("bulletList" or "orderedList"))
                 {
-                    return ("Error: target_id and list_type (bulletList or orderedList) are required.", null, null);
+                    return ToolInvalid("Error: target_id and list_type (bulletList or orderedList) are required.");
                 }
 
                 var resolvedTargetId = await ResolveNodeIdAsync(
                     documentId, userId, targetId, cancellationToken);
                 if (resolvedTargetId is null)
                 {
-                    return ("Error: target_id was not found. Copy the exact list node ID from the document structure.", null, null);
+                    return ToolNotFound("Error: target_id was not found. Copy the exact list node ID from the document structure.");
                 }
 
                 var operation = new StoredOperation(
@@ -1280,7 +1249,7 @@ public class ChatService : IChatService
                     cancellationToken);
                 if (validationError is not null)
                 {
-                    return (validationError, null, null);
+                    return validationError;
                 }
 
                 var label = listType == "bulletList" ? "bulleted list" : "numbered list";
@@ -1301,18 +1270,18 @@ public class ChatService : IChatService
                     || !call.Arguments.TryGetProperty("new_name", out var nameElement)
                     || nameElement.ValueKind != JsonValueKind.String)
                 {
-                    return ("Error: the new_name argument was missing.", null, null);
+                    return ToolInvalid("Error: the new_name argument was missing.");
                 }
 
                 // Mirror the validation in DocumentService.UpdateAsync.
                 var newName = nameElement.GetString()!.Trim();
                 if (newName.Length == 0)
                 {
-                    return ("Error: the name cannot be empty.", null, null);
+                    return ToolInvalid("Error: the name cannot be empty.");
                 }
                 if (newName.Length > 255)
                 {
-                    return ("Error: the name is too long (max 255 characters).", null, null);
+                    return ToolInvalid("Error: the name is too long (max 255 characters).");
                 }
 
                 using (var scope = _scopeFactory.CreateScope())
@@ -1323,7 +1292,7 @@ public class ChatService : IChatService
                         .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken);
                     if (document is null)
                     {
-                        return ("Error: the document no longer exists.", null, null);
+                        return ToolNotFound("Error: the document no longer exists.");
                     }
                     try
                     {
@@ -1331,7 +1300,7 @@ public class ChatService : IChatService
                     }
                     catch (InvalidOperationException ex)
                     {
-                        return ($"Error: {ex.Message}", null, null);
+                        return ToolInvalid($"Error: {ex.Message}");
                     }
 
                     if (!string.Equals(document.FileName, newName, StringComparison.Ordinal))
@@ -1341,7 +1310,7 @@ public class ChatService : IChatService
                         await db.SaveChangesAsync(cancellationToken);
                     }
 
-                    return ($"Done — the document is now named \"{newName}\".", new DocumentDetailResponse
+                    return ToolSucceeded($"Done — the document is now named \"{newName}\".", new DocumentDetailResponse
                     {
                         Id = document.Id,
                         FileName = document.FileName,
@@ -1352,7 +1321,7 @@ public class ChatService : IChatService
                         UpdatedAt = document.UpdatedAt,
                         Content = document.Content,
                         ContentJson = document.ContentJson
-                    }, null);
+                    });
                 }
 
             case "prepend_text":
@@ -1360,25 +1329,25 @@ public class ChatService : IChatService
             {
                 if (!TryGetStringArg(call, "text", out var addedText) || addedText.Trim().Length == 0)
                 {
-                    return ("Error: the text argument was missing or empty.", null, null);
+                    return ToolInvalid("Error: the text argument was missing or empty.");
                 }
                 var location = call.Name == "prepend_text" ? "start" : "end";
-                return (
+                return ToolSucceeded(
                     $"Proposed adding the text to the {location} of the document. The user will review and "
                     + "apply it — confirm briefly, and don't claim it's already done.",
-                    null,
-                    new ProposalDraft(
+                    proposal: new ProposalDraft(
                         string.Empty,
                         addedText.Trim(),
-                        call.Name == "prepend_text" ? ProposalKindPrepend : ProposalKindInsert));
+                        call.Name == "prepend_text" ? ProposalKindPrepend : ProposalKindInsert),
+                    stopAfterTurn: true);
             }
 
             default:
-                return ($"Error: unknown tool '{call.Name}'.", null, null);
+                return new ChatToolExecution(ToolExecutionStatus.ToolNotFound, $"Error: unknown tool '{call.Name}'.");
         }
     }
 
-    private async Task<string?> ValidateProposedOperationAsync(
+    private async Task<ChatToolExecution?> ValidateProposedOperationAsync(
         Guid documentId,
         Guid userId,
         StoredOperation operation,
@@ -1396,18 +1365,18 @@ public class ChatService : IChatService
         }
         catch (KeyNotFoundException ex)
         {
-            return $"Error: {ex.Message}";
+            return ToolNotFound($"Error: {ex.Message}");
         }
         catch (InvalidOperationException ex)
         {
-            return "Error: the proposed document operation is invalid. "
+            return ToolBlocked("Error: the proposed document operation is invalid. "
                 + ex.Message
                 + " Review this validation error, inspect the document structure if needed, "
-                + "and retry with a compatible operation. Do not claim the change was completed.";
+                + "and retry with a compatible operation. Do not claim the change was completed.");
         }
     }
 
-    private async Task<(string ResultText, DocumentDetailResponse? UpdatedDoc, ProposalDraft? Proposal)>
+    private async Task<ChatToolExecution>
         ExecuteRetrievalToolAsync(
             AiToolCall call,
             Guid documentId,
@@ -1421,7 +1390,7 @@ public class ChatService : IChatService
             cancellationToken);
         if (document is null)
         {
-            return ("Error: the document no longer exists.", null, null);
+            return ToolNotFound("Error: the document no longer exists.");
         }
 
         if (call.Name == "get_document_structure")
@@ -1430,27 +1399,24 @@ public class ChatService : IChatService
                 document,
                 DocumentContextType.StructureOutline,
                 cancellationToken);
-            return (
+            return ToolSucceeded(
                 LimitContext(outline, 12000),
-                null,
-                null);
+                stopAfterTurn: false);
         }
 
         if (call.Name == "get_document_text")
         {
             var includeIds = TryGetBoolArg(call, "include_ids");
-            return (
+            return ToolSucceeded(
                 LimitContext(await _contextBuilder.BuildAsync(
                     document,
                     includeIds ? DocumentContextType.TextWithIds : DocumentContextType.PlainText,
-                    cancellationToken), 12000),
-                null,
-                null);
+                    cancellationToken), 12000));
         }
 
         if (!TryGetStringArg(call, "node_id", out var nodeId))
         {
-            return ("Error: node_id is required.", null, null);
+            return ToolInvalid("Error: node_id is required.");
         }
 
         var structure = await _contextBuilder.BuildAsync(
@@ -1460,23 +1426,23 @@ public class ChatService : IChatService
         var root = JsonNode.Parse(structure)!.AsObject();
         var node = FindJsonNode(root, nodeId);
         return node is null
-            ? ("Error: node_id was not found.", null, null)
-            : (LimitContext(node.ToJsonString(), 16000), null, null);
+            ? ToolNotFound("Error: node_id was not found.")
+            : ToolSucceeded(LimitContext(node.ToJsonString(), 16000));
     }
 
-    private static (string, DocumentDetailResponse?, ProposalDraft?) CreateStructuredProposal(
+    private static ChatToolExecution CreateStructuredProposal(
         string message,
         string target,
         string replacement,
         string kind,
         StoredOperation operation,
         int contentVersion) =>
-        (message, null, new ProposalDraft(
+        ToolSucceeded(message, proposal: new ProposalDraft(
             target,
             replacement,
             kind,
             JsonSerializer.Serialize(operation),
-            contentVersion));
+            contentVersion), stopAfterTurn: true);
 
     private async Task<string?> GetNodeLabelAsync(
         Guid documentId,

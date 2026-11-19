@@ -149,6 +149,7 @@ builder.Services.AddHttpClient<IVectorStore, QdrantVectorStore>(client =>
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IFlashcardService, FlashcardService>();
+builder.Services.AddScoped<ChatOrchestrator>();
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddSingleton<IGeminiModelCatalog, GeminiModelCatalog>();
 
