@@ -15,7 +15,13 @@ public enum ToolExecutionStatus
     ToolNotFound,
     Failed,
     NeedsContext,
-    Blocked
+    Blocked,
+    ProposalCreated,
+    TargetAmbiguous,
+    InsufficientContext,
+    StaleDocumentVersion,
+    ValidationFailed,
+    DocumentNotAccessible
 }
 
 public sealed record ToolExecutionResult(

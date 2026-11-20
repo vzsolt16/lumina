@@ -15,7 +15,7 @@ public class EditProposalResponse
     // One of EditProposalStatus ("pending" | "applied" | "rejected").
     public string Status { get; set; } = string.Empty;
 
-    // "replace", "insert", or "prepend".
+    // Legacy kinds ("replace", "insert", "prepend") and current "structured" batch edits.
     public string Kind { get; set; } = "replace";
 
     public int? ContentVersion { get; set; }

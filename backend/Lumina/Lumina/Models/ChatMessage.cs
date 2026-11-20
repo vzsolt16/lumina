@@ -17,7 +17,8 @@ public class ChatMessage
     // AI edit proposal (assistant messages only). Legacy text proposals can
     // replace ProposalTarget or insert ProposalReplacement after it; an empty
     // target means append, while "prepend" adds at the start. Structured node
-    // proposals use ProposalOperationJson. The user then applies or rejects it.
+    // proposals store one serialized operation; structured proposals store an
+    // ordered operation list. The user then applies or rejects it.
     public string? ProposalTarget { get; set; }
 
     public string? ProposalReplacement { get; set; }
@@ -25,7 +26,7 @@ public class ChatMessage
     // One of EditProposalStatus; null when there is no proposal.
     public string? ProposalStatus { get; set; }
 
-    // "replace", "insert", or "prepend". Null is used by pre-existing rows.
+    // Legacy kinds ("replace", "insert", "prepend") or "structured". Null is used by pre-existing rows.
     public string? ProposalKind { get; set; }
 
     // Serialized structured operation captured when the proposal was created.

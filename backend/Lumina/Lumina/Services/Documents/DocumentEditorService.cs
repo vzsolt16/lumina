@@ -91,6 +91,57 @@ public sealed class DocumentEditorService : IDocumentEditorService
         ApplyOperation(root, operation);
     }
 
+    public async Task ValidateOperationsAsync(Guid documentId, Guid userId, IReadOnlyList<DocumentOperation> operations,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateBatch(operations);
+        var document = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("Document not found.");
+        EnsureVersion(document.ContentVersion, operations[0].ExpectedContentVersion);
+        var root = JsonNode.Parse(_converter.Normalize(document.ContentJson))!.AsObject();
+        foreach (var operation in operations) ApplyOperation(root, operation);
+    }
+
+    public async Task<DocumentDetailResponse> ApplyOperationsAsync(Guid documentId, Guid userId,
+        IReadOnlyList<DocumentOperation> operations, CancellationToken cancellationToken = default)
+    {
+        ValidateBatch(operations);
+        var document = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("Document not found.");
+        EnsureVersion(document.ContentVersion, operations[0].ExpectedContentVersion);
+        var root = JsonNode.Parse(_converter.Normalize(document.ContentJson))!.AsObject();
+        foreach (var operation in operations) ApplyOperation(root, operation);
+        var normalized = _converter.Normalize(root.ToJsonString());
+        document.ContentJson = normalized;
+        document.Content = _converter.ExtractPlainText(normalized);
+        document.ContentSize = Encoding.UTF8.GetByteCount(document.Content);
+        document.ContentVersion++;
+        document.UpdatedAt = DateTime.UtcNow;
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _indexScheduler?.Schedule(document.Id);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new InvalidOperationException("The document changed before this operation was applied. Reload it and try again.", ex);
+        }
+        return ToResponse(document);
+    }
+
+    private static void ValidateBatch(IReadOnlyList<DocumentOperation> operations)
+    {
+        if (operations.Count is < 1 or > 25) throw new InvalidOperationException("An edit proposal must contain between 1 and 25 operations.");
+        if (operations.Any(op => op.ExpectedContentVersion != operations[0].ExpectedContentVersion))
+            throw new InvalidOperationException("All operations in a proposal must target the same document version.");
+    }
+
+    private static void EnsureVersion(int currentVersion, int expectedVersion)
+    {
+        if (currentVersion != expectedVersion)
+            throw new InvalidOperationException("The document changed before this operation was validated. Reload it and try again.");
+    }
+
     private static void ApplyOperation(JsonObject root, DocumentOperation operation)
     {
         switch (operation)

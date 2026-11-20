@@ -252,11 +252,8 @@ public class ChatService : IChatService
 
         var tools = new List<AiTool>
         {
-            RenameDocumentTool, GetDocumentStructureTool, GetDocumentTextTool,
-            GetDocumentNodeTool, ReplaceDocumentNodeTool, InsertDocumentNodeTool,
-            DeleteDocumentNodeTool, MoveDocumentNodeTool,
-            ChangeListTypeTool,
-            PrependTextTool, AppendTextTool
+            RenameDocumentTool, FindDocumentSectionTool, GetDocumentSectionTool,
+            GetDocumentNodeTool, SearchDocumentTool, ProposeDocumentEditTool
         };
         var baseline = BuildMessages(fileName, new RagContext("none", "", [], 0), history, question);
         var evidenceBudget = Math.Max(0, _requestBudgeter.AvailableInputTokens(resolvedModelId)
@@ -295,7 +292,7 @@ public class ChatService : IChatService
                 AiToolCall call, CancellationToken ct)
             {
                 var toolExecution = await ExecuteToolAsync(
-                    call, documentId, userId, content, contentVersion, question, ct);
+                    call, documentId, userId, contentVersion, ct);
                 var resultText = toolExecution.ResultText;
                 var executionStatus = toolExecution.Status;
                 var updatedDoc = toolExecution.UpdatedDocument;
@@ -330,6 +327,7 @@ public class ChatService : IChatService
                             ParentId = GetStoredOperation(draft.OperationJson)?.ParentId,
                             Placement = GetStoredOperation(draft.OperationJson)?.Placement
                         };
+                        executionStatus = ToolExecutionStatus.ProposalCreated;
                         stopAfterTurn = true;
                     }
                 }
@@ -471,6 +469,17 @@ public class ChatService : IChatService
         // rather than blindly rewriting content.
         if (message.ProposalOperationJson is not null)
         {
+            if (message.ProposalOperationJson.TrimStart().StartsWith("[", StringComparison.Ordinal))
+            {
+                var storedOperations = GetStoredOperations(message.ProposalOperationJson);
+                var operations = storedOperations.Select(stored => DeserializeOperation(
+                    ResolveStructuredOperationReferences(document.ContentJson, JsonSerializer.Serialize(stored)),
+                    message.ProposalContentVersion ?? document.ContentVersion)).ToArray();
+                var updated = await _documentEditor.ApplyOperationsAsync(document.Id, userId, operations);
+                message.ProposalStatus = EditProposalStatus.Applied;
+                await db.SaveChangesAsync();
+                return updated;
+            }
             var operationJson = ResolveStructuredOperationReferences(
                 document.ContentJson,
                 message.ProposalOperationJson);
@@ -779,6 +788,69 @@ public class ChatService : IChatService
             required = new[] { "new_name" }
         }));
 
+    private static readonly AiTool FindDocumentSectionTool = new(
+        "find_document_section",
+        "Find headings in the current document by title or reference. Use this when the target section is unclear. The result identifies repeated headings as ambiguous; never choose one silently.",
+        JsonSerializer.SerializeToElement(new
+        {
+            type = "object", properties = new { reference = new { type = "string", description = "Heading title or a short distinctive heading reference." } },
+            required = new[] { "reference" }, additionalProperties = false
+        }));
+
+    private static readonly AiTool GetDocumentSectionTool = new(
+        "get_document_section",
+        "Retrieve current canonical content under a section heading, including stable node IDs, heading path, document version, and whether the result is complete. Use this before complex section rewrites.",
+        JsonSerializer.SerializeToElement(new
+        {
+            type = "object", properties = new
+            {
+                section_id = new { type = "string", description = "Stable heading node ID returned by find_document_section." },
+                max_tokens = new { type = "integer", description = "Maximum approximate token budget, from 100 to 6000." }
+            }, required = new[] { "section_id" }, additionalProperties = false
+        }));
+
+    private static readonly AiTool SearchDocumentTool = new(
+        "search_document",
+        "Search the active document semantically. This is discovery only; use current canonical section or node content before editing.",
+        JsonSerializer.SerializeToElement(new
+        {
+            type = "object", properties = new { query = new { type = "string", description = "A concise semantic search query." } },
+            required = new[] { "query" }, additionalProperties = false
+        }));
+
+    private static readonly AiTool ProposeDocumentEditTool = new(
+        "propose_document_edit",
+        "Prepare one pending, approval-required edit proposal. Provide actual replacement/inserted content. Resolve targets against the current document using node IDs or exact complete block text. For a section rewrite, include multiple changes and scope_section_id. Never send ProseMirror JSON. Supported actions: replace_block, insert, delete, move, change_list_type.",
+        JsonSerializer.SerializeToElement(new
+        {
+            type = "object",
+            properties = new
+            {
+                summary = new { type = "string", description = "A concise human-readable summary of the actual proposed change." },
+                scope_section_id = new { type = "string", description = "Optional heading node ID limiting every target to that section and its descendants." },
+                changes = new
+                {
+                    type = "array", minItems = 1, maxItems = 25,
+                    items = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            action = new { type = "string", @enum = new[] { "replace_block", "insert", "insert_after", "delete", "move", "change_list_type" } },
+                            target = new { type = "string", description = "Stable node ID or exact complete block text. For insert, the parent container ID or 'document'; for insert_after, an anchor node ID." },
+                            replacement = new { type = "string", description = "Complete replacement block text for replace_block; new text for insert." },
+                            node_type = new { type = "string", @enum = new[] { "paragraph", "heading", "codeBlock" } },
+                            destination_id = new { type = "string", description = "Destination container or sibling ID for move." },
+                            index = new { type = "integer", description = "Zero-based insertion index, used by insert and move." },
+                            placement = new { type = "string", @enum = new[] { "before", "after", "at_index" } },
+                            list_type = new { type = "string", @enum = new[] { "bulletList", "orderedList" } }
+                        },
+                        required = new[] { "action", "target" }, additionalProperties = false
+                    }
+                }
+            }, required = new[] { "summary", "changes" }, additionalProperties = false
+        }));
+
     private static readonly AiTool GetDocumentStructureTool = new(
         "get_document_structure",
         "Retrieve the document structure and stable node IDs before planning a structured edit.",
@@ -803,13 +875,14 @@ public class ChatService : IChatService
 
     private static readonly AiTool GetDocumentNodeTool = new(
         "get_document_node",
-        "Retrieve one document node by its stable ID, including its structure and text.",
+        "Retrieve readable current canonical content and heading path for one stable node ID. The result is concise and does not expose ProseMirror JSON.",
         JsonSerializer.SerializeToElement(new
         {
             type = "object",
             properties = new
             {
-                node_id = new { type = "string" }
+                node_id = new { type = "string" },
+                max_tokens = new { type = "integer", description = "Approximate response limit from 100 to 6000 tokens." }
             },
             required = new[] { "node_id" }
         }));
@@ -965,8 +1038,9 @@ public class ChatService : IChatService
         new(ToolExecutionStatus.Succeeded, text, document, proposal, stopAfterTurn);
 
     private static ChatToolExecution ToolInvalid(string text) => new(ToolExecutionStatus.InvalidArguments, text);
-    private static ChatToolExecution ToolNotFound(string text) => new(ToolExecutionStatus.NotFound, text);
-    private static ChatToolExecution ToolBlocked(string text) => new(ToolExecutionStatus.Blocked, text);
+    private static ChatToolExecution ToolNotFound(string text, ToolExecutionStatus status = ToolExecutionStatus.NotFound) => new(status, text);
+    private static ChatToolExecution ToolBlocked(string text, ToolExecutionStatus status = ToolExecutionStatus.Blocked) => new(status, text);
+    private static ChatToolExecution ToolNeedsClarification(string text, ToolExecutionStatus status = ToolExecutionStatus.NeedsContext) => new(status, text);
 
     private sealed record ToolExecutionMetadata(
         DocumentDetailResponse? UpdatedDocument,
@@ -1001,12 +1075,18 @@ public class ChatService : IChatService
                 return "Proposing an addition";
             case "prepend_text":
                 return "Proposing an introduction";
+            case "find_document_section":
             case "get_document_structure":
                 return "Reading document structure";
+            case "get_document_section":
             case "get_document_text":
                 return "Reading document text";
             case "get_document_node":
                 return "Reading document node";
+            case "search_document":
+                return "Searching the active document";
+            case "propose_document_edit":
+                return "Preparing an edit proposal";
             case "replace_document_node":
                 return "Proposing a node edit";
             case "insert_document_node":
@@ -1031,16 +1111,24 @@ public class ChatService : IChatService
         AiToolCall call,
         Guid documentId,
         Guid userId,
-        string content,
         int contentVersion,
-        string question,
         CancellationToken cancellationToken)
     {
+        if (call.Name is not ("rename_document" or "find_document_section" or "get_document_section"
+            or "get_document_node" or "search_document" or "propose_document_edit"))
+            return new ChatToolExecution(ToolExecutionStatus.ToolNotFound,
+                $"Tool '{call.Name}' is not part of the active document-editing interface.");
         switch (call.Name)
         {
+            case "find_document_section":
+            case "get_document_section":
+            case "get_document_node":
+            case "search_document":
+                return await ExecuteHighLevelRetrievalToolAsync(call, documentId, userId, cancellationToken);
+            case "propose_document_edit":
+                return await ExecuteProposalToolAsync(call, documentId, userId, contentVersion, cancellationToken);
             case "get_document_structure":
             case "get_document_text":
-            case "get_document_node":
                 return await ExecuteRetrievalToolAsync(
                     call, documentId, userId, cancellationToken);
 
@@ -1133,11 +1221,7 @@ public class ChatService : IChatService
                     return ToolInvalid("Error: target_id is required.");
                 }
 
-                var requestedTarget = await ResolveDeleteTargetFromQuestionAsync(
-                    documentId, userId, question, cancellationToken);
-                var resolvedTarget = requestedTarget?.Id
-                    ?? await ResolveNodeIdAsync(documentId, userId, targetId, cancellationToken)
-                    ?? targetId;
+                var resolvedTarget = await ResolveNodeIdAsync(documentId, userId, targetId, cancellationToken) ?? targetId;
                 var operation = new StoredOperation("delete", resolvedTarget, null, 0, null, null);
                 var validationError = await ValidateProposedOperationAsync(
                     documentId,
@@ -1150,9 +1234,7 @@ public class ChatService : IChatService
                     return validationError;
                 }
 
-                var targetLabel = requestedTarget?.Label
-                    ?? await GetNodeLabelAsync(documentId, userId, resolvedTarget, cancellationToken)
-                    ?? targetId;
+                var targetLabel = await GetNodeLabelAsync(documentId, userId, resolvedTarget, cancellationToken) ?? targetId;
                 return CreateStructuredProposal(
                     "Proposed deleting the node. The user will review and apply it.",
                     targetLabel,
@@ -1387,6 +1469,239 @@ public class ChatService : IChatService
     }
 
     private async Task<ChatToolExecution>
+        ExecuteHighLevelRetrievalToolAsync(
+            AiToolCall call, Guid documentId, Guid userId, CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+        var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken);
+        if (document is null) return ToolNotFound("The active document is no longer accessible.", ToolExecutionStatus.DocumentNotAccessible);
+        var resolver = new DocumentTargetResolver();
+
+        if (call.Name == "find_document_section")
+        {
+            if (!TryGetStringArg(call, "reference", out var reference) || string.IsNullOrWhiteSpace(reference))
+                return ToolInvalid("A section reference is required.");
+            var matches = resolver.FindSections(document.ContentJson, reference.Trim());
+            if (matches.Count == 0) return ToolNotFound($"No section matched '{reference}'.");
+            var result = new
+            {
+                document_version = document.ContentVersion,
+                ambiguous = matches.Count > 1,
+                sections = matches.Select(m => new { section_id = m.Id, heading = m.Text, heading_path = m.HeadingPath, parent_heading = m.HeadingPath.Count > 1 ? m.HeadingPath[^2] : null, node_ids = new[] { m.Id } })
+            };
+            return matches.Count > 1
+                ? ToolNeedsClarification("Several sections match. Ask the user which one they mean; do not choose one automatically. " + JsonSerializer.Serialize(result), ToolExecutionStatus.TargetAmbiguous)
+                : ToolSucceeded(JsonSerializer.Serialize(result));
+        }
+
+        if (call.Name == "get_document_section")
+        {
+            if (!TryGetStringArg(call, "section_id", out var sectionId)) return ToolInvalid("section_id is required.");
+            var maxTokens = TryGetIntArg(call, "max_tokens", out var requested) ? Math.Clamp(requested, 100, 6000) : 3000;
+            var section = new DocumentStructureRetriever().RetrieveSection(document.Id, document.ContentVersion,
+                document.ContentJson, sectionId, maxTokens);
+            if (section is null) return ToolNotFound("That section no longer exists in the current document version. Find the section again.");
+            var targets = resolver.GetSectionTargets(document.ContentJson, sectionId);
+            var output = new StringBuilder(); var used = 0; string? nextNodeId = null;
+            foreach (var target in targets)
+            {
+                var line = target.Type == "heading" ? $"{new string('#', Math.Clamp(target.HeadingLevel, 1, 6))} {target.Text}"
+                    : target.Type is "bulletList" or "orderedList" or "listItem" or "taskItem" or "blockquote" or "table" or "tableRow" or "tableCell" or "tableHeader"
+                        ? $"[container_id: {target.Id}; type: {target.Type}]"
+                    : string.IsNullOrWhiteSpace(target.Text)
+                        ? $"[container_id: {target.Id}; type: {target.Type}]"
+                        : $"[node_id: {target.Id}; type: {target.Type}] {target.Text}";
+                var tokens = DocumentChunker.CountTokens(line);
+                if (used + tokens > maxTokens) { nextNodeId = target.Id; break; }
+                output.AppendLine(line); used += tokens;
+            }
+            return ToolSucceeded(JsonSerializer.Serialize(new { document_id = document.Id, document_version = document.ContentVersion,
+                section_id = section.SectionNodeId, heading_path = targets.FirstOrDefault()?.HeadingPath, content = output.ToString().TrimEnd(),
+                complete = nextNodeId is null, next_node_id = nextNodeId }));
+        }
+
+        if (call.Name == "get_document_node")
+        {
+            if (!TryGetStringArg(call, "node_id", out var nodeId)) return ToolInvalid("node_id is required.");
+            var node = resolver.FindById(document.ContentJson, nodeId);
+            if (node is null) return ToolNotFound("That node no longer exists in the current document version. Retrieve the current section again.");
+            var maxTokens = TryGetIntArg(call, "max_tokens", out var requestedNodeTokens) ? Math.Clamp(requestedNodeTokens, 100, 6000) : 2500;
+            if (DocumentChunker.CountTokens(node.Text) > maxTokens)
+                return ToolNeedsClarification(JsonSerializer.Serialize(new { document_id = document.Id, document_version = document.ContentVersion,
+                    node_id = node.Id, node_type = node.Type, heading_path = node.HeadingPath, complete = false,
+                    limitation = "This single node is too large to return without splitting the source block. Narrow the request to a section or semantic passage." }),
+                    ToolExecutionStatus.InsufficientContext);
+            return ToolSucceeded(JsonSerializer.Serialize(new { document_id = document.Id, document_version = document.ContentVersion,
+                node_id = node.Id, node_type = node.Type, heading_path = node.HeadingPath, content = node.Text, complete = true }));
+        }
+
+        if (!TryGetStringArg(call, "query", out var query) || string.IsNullOrWhiteSpace(query))
+            return ToolInvalid("A semantic search query is required.");
+        var search = await _contextSelector.SelectAsync(documentId, userId, query.Trim(), [], cancellationToken, 2500, forceSemantic: true);
+        return search.Outcome switch
+        {
+            RetrievalOutcome.IndexStale or RetrievalOutcome.Indexing or RetrievalOutcome.IndexUnavailable =>
+                ToolNeedsClarification($"Search is unavailable for the current document version ({search.Outcome}). Retrieve a current section or ask the user for a narrower reference. {search.Limitation}", ToolExecutionStatus.InsufficientContext),
+            RetrievalOutcome.Failed => ToolBlocked("Semantic search failed; no retrieved passage should be used as an edit target.", ToolExecutionStatus.ValidationFailed),
+            RetrievalOutcome.NoResults => ToolNotFound("No relevant indexed passages were found for that query."),
+            _ => ToolSucceeded(JsonSerializer.Serialize(new { document_id = document.Id, document_version = document.ContentVersion,
+                retrieval_method = "semantic_discovery_only", complete = search.Complete, limitation = search.Limitation,
+                passages = search.Sources.Select((source, i) => new { text = i < search.Text.Split("\n\n", StringSplitOptions.None).Length ? search.Text.Split("\n\n", StringSplitOptions.None)[i] : "", source.HeadingPath, source.NodeIds, source.RelevanceScore }) }))
+        };
+    }
+
+    private async Task<ChatToolExecution> ExecuteProposalToolAsync(
+        AiToolCall call, Guid documentId, Guid userId, int startingVersion, CancellationToken cancellationToken)
+    {
+        if (!TryGetStringArg(call, "summary", out var requestedSummary)
+            || string.IsNullOrWhiteSpace(requestedSummary)
+            || call.Arguments.ValueKind != JsonValueKind.Object
+            || !call.Arguments.TryGetProperty("changes", out var changesElement)
+            || changesElement.ValueKind != JsonValueKind.Array
+            || changesElement.GetArrayLength() is < 1 or > 25)
+            return ToolInvalid("A concise summary and between 1 and 25 changes are required.");
+        if (call.Arguments.GetRawText().Length > 64000)
+            return ToolInvalid("The edit proposal is too large. Retrieve a narrower section and propose smaller changes.");
+        var scopeSectionId = TryGetOptionalStringArg(call, "scope_section_id", out var sectionScope) ? sectionScope : null;
+
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
+        var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken);
+        if (document is null) return ToolNotFound("The active document is no longer accessible.", ToolExecutionStatus.DocumentNotAccessible);
+        if (document.ContentVersion != startingVersion)
+            return ToolBlocked("The document changed while you were preparing this edit. Retrieve the current content and prepare the proposal again.", ToolExecutionStatus.StaleDocumentVersion);
+
+        var resolver = new DocumentTargetResolver();
+        HashSet<string>? scopedIds = null;
+        if (scopeSectionId is not null)
+        {
+            scopedIds = resolver.GetSectionNodeIds(document.ContentJson, scopeSectionId).ToHashSet(StringComparer.Ordinal);
+            if (scopedIds.Count == 0) return ToolNotFound("The selected section no longer exists. Find it again in the current document.");
+        }
+
+        var stored = new List<StoredOperation>(); var descriptions = new List<string>(); var previewDetails = new List<string>();
+        foreach (var change in changesElement.EnumerateArray())
+        {
+            if (change.ValueKind != JsonValueKind.Object || !change.TryGetProperty("action", out var actionElement)
+                || actionElement.ValueKind != JsonValueKind.String || !change.TryGetProperty("target", out var targetElement)
+                || targetElement.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(targetElement.GetString()))
+                return ToolInvalid("Each change needs an action and target.");
+            var action = actionElement.GetString()!; var targetReference = targetElement.GetString()!;
+            DocumentTarget? target = null;
+            string? resolvedTargetId = null;
+            if (action != "insert")
+            {
+                var resolution = resolver.Resolve(document.ContentJson, targetReference, scopeSectionId);
+                if (resolution.Status == TargetResolutionStatus.Ambiguous)
+                    return ToolNeedsClarification("The target matches more than one current node: " + string.Join("; ", resolution.Matches.Select(m => $"{m.Text} ({m.Id})")), ToolExecutionStatus.TargetAmbiguous);
+                if (resolution.Status == TargetResolutionStatus.NotFound)
+                    return ToolNotFound("The target is not present in the current document. Retrieve its current section and stable node ID.");
+                target = resolution.Matches[0]; resolvedTargetId = target.Id;
+            }
+
+            var storedOperation = CreateRequestedOperation(change, action, targetReference, resolvedTargetId, target,
+                document.ContentJson, document.ContentVersion, resolver, scopedIds, out var description, out var validationMessage);
+            if (storedOperation is null)
+                return ToolInvalid(validationMessage ?? "The requested edit is incomplete or invalid.");
+            stored.Add(storedOperation); descriptions.Add(description!);
+            var suppliedContent = change.TryGetProperty("replacement", out var replacementElement) && replacementElement.ValueKind == JsonValueKind.String
+                ? replacementElement.GetString() : null;
+            previewDetails.Add(action switch
+            {
+                "replace_block" => "Replacement text:\n" + suppliedContent,
+                "insert" or "insert_after" => "Inserted content:\n" + suppliedContent,
+                "delete" => "Deleted content:\n" + target?.Text,
+                _ => description!
+            });
+        }
+
+        var documentOperations = stored.Select(op => DeserializeOperation(JsonSerializer.Serialize(op), document.ContentVersion)).ToArray();
+        try
+        {
+            await _documentEditor.ValidateOperationsAsync(documentId, userId, documentOperations, cancellationToken);
+        }
+        catch (KeyNotFoundException ex) { return ToolNotFound(ex.Message); }
+        catch (InvalidOperationException ex)
+        {
+            var stale = ex.Message.Contains("changed", StringComparison.OrdinalIgnoreCase);
+            return ToolBlocked("The edit did not pass document validation: " + ex.Message,
+                stale ? ToolExecutionStatus.StaleDocumentVersion : ToolExecutionStatus.ValidationFailed);
+        }
+
+        var humanSummary = string.Join(" ", descriptions);
+        var preview = string.Join("\n\n", previewDetails);
+        var json = JsonSerializer.Serialize(stored);
+        return new ChatToolExecution(ToolExecutionStatus.ProposalCreated,
+            $"Proposal ready for approval. {humanSummary} Assistant summary: {requestedSummary.Trim()}",
+            Proposal: new ProposalDraft(humanSummary, preview, "structured", json, document.ContentVersion), StopAfterTurn: true);
+    }
+
+    private static StoredOperation? CreateRequestedOperation(JsonElement change, string action, string targetReference,
+        string? targetId, DocumentTarget? target, string contentJson, int version, DocumentTargetResolver resolver,
+        HashSet<string>? scopedIds, out string? description, out string? error)
+    {
+        description = null; error = null;
+        string? String(string name) => change.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+        int? Integer(string name) => change.TryGetProperty(name, out var e) && e.TryGetInt32(out var value) ? value : null;
+        bool InScope(string? id) => scopedIds is null ? true : id is not null && scopedIds.Contains(id);
+        switch (action)
+        {
+            case "replace_block":
+                var replacement = String("replacement");
+                if (string.IsNullOrWhiteSpace(replacement)) { error = "Replacement content cannot be empty."; return null; }
+                description = $"Replace {target!.Type} ‘{PreviewText(target.Text)}’ with ‘{PreviewText(replacement)}’.";
+                return new("replace", targetId, null, 0, null, replacement);
+            case "delete":
+                if (target!.Type is "heading" or "bulletList" or "orderedList" or "blockquote" or "doc")
+                { error = "Deleting a section/container as one node is not supported. Propose explicit changes for its contents instead."; return null; }
+                description = $"Delete {target!.Type} ‘{PreviewText(target.Text)}’.";
+                return new("delete", targetId, null, 0, null, null);
+            case "insert":
+            case "insert_after":
+            {
+                var after = action == "insert_after" ? target : null;
+                var parentReference = action == "insert_after" ? after?.ParentId : targetReference == "document" ? null : targetReference;
+                var parent = parentReference is null ? null : resolver.FindById(contentJson, parentReference);
+                if (action == "insert_after" && after is null) { error = "The insertion anchor was not resolved."; return null; }
+                if (scopedIds is not null && parentReference is null && action == "insert") { error = "An insertion scoped to a section must remain inside that section; use insert_after on a node in the section."; return null; }
+                if (parentReference is not null && (parent is null || !InScope(parent.Id))) { error = "The insertion parent does not exist in the selected section."; return null; }
+                var index = Integer("index"); var nodeType = String("node_type"); var insertText = String("replacement");
+                if (nodeType is not ("paragraph" or "heading" or "codeBlock") || string.IsNullOrWhiteSpace(insertText))
+                { error = "Insert needs non-empty content and a supported node_type."; return null; }
+                if (parent is not null && parent.Type is not ("doc" or "blockquote" or "listItem" or "taskItem" or "tableCell" or "tableHeader"))
+                { error = $"A {nodeType} cannot be inserted directly into a {parent.Type} node."; return null; }
+                if (action == "insert_after") index = after!.Index + 1;
+                if (index is null || index < 0) { error = "Insert needs a non-negative index."; return null; }
+                description = action == "insert_after"
+                    ? $"Insert a {nodeType} after ‘{PreviewText(after!.Text)}’ with ‘{PreviewText(insertText)}’."
+                    : $"Insert a {nodeType} under {parent?.Text ?? "the document"} with ‘{PreviewText(insertText)}’.";
+                return new("insert", null, parent?.Id, index.Value, nodeType, insertText);
+            }
+            case "move":
+                var destRef = String("destination_id");
+                if (string.IsNullOrWhiteSpace(destRef)) { error = "Move needs a destination_id or 'document'."; return null; }
+                if (scopedIds is not null && destRef == "document") { error = "A section-scoped move cannot leave its selected section."; return null; }
+                var dest = destRef == "document" ? null : resolver.FindById(contentJson, destRef);
+                if (destRef is not null and not "document" && (dest is null || !InScope(dest.Id))) { error = "The move destination is missing or outside the selected section."; return null; }
+                var moveIndex = Integer("index"); var placement = String("placement") ?? "at_index";
+                if (moveIndex is null || moveIndex < 0 || placement is not ("before" or "after" or "at_index")) { error = "Move needs a valid destination index and placement."; return null; }
+                description = $"Move ‘{PreviewText(target!.Text)}’ to {dest?.Text ?? "the document"}.";
+                return new("move", targetId, dest?.Id, moveIndex.Value, null, null, placement);
+            case "change_list_type":
+                var listType = String("list_type");
+                if (target!.Type is not ("bulletList" or "orderedList") || listType is not ("bulletList" or "orderedList"))
+                { error = "change_list_type needs a list target and bulletList or orderedList."; return null; }
+                description = $"Change the list ‘{PreviewText(target.Text)}’ to a { (listType == "bulletList" ? "bulleted" : "numbered") } list.";
+                return new("change_list_type", targetId, null, 0, listType, null);
+            default:
+                error = "Unsupported edit action."; return null;
+        }
+    }
+
+    private static string PreviewText(string text) => text.Length > 90 ? text[..87].TrimEnd() + "…" : text;
+
+    private async Task<ChatToolExecution>
         ExecuteRetrievalToolAsync(
             AiToolCall call,
             Guid documentId,
@@ -1543,41 +1858,6 @@ public class ChatService : IChatService
         };
     }
 
-    private async Task<(string Id, string Label)?> ResolveDeleteTargetFromQuestionAsync(
-        Guid documentId,
-        Guid userId,
-        string question,
-        CancellationToken cancellationToken)
-    {
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
-        var document = await db.Documents.FirstOrDefaultAsync(
-            d => d.Id == documentId && d.UserId == userId,
-            cancellationToken);
-        var root = document is null
-            ? null
-            : JsonNode.Parse(document.ContentJson)?.AsObject();
-        if (root is null)
-        {
-            return null;
-        }
-
-        var matches = FindBlockNodes(root)
-            .Select(node => new
-            {
-                Id = node["attrs"]?["id"]?.GetValue<string>(),
-                Label = ExtractNodeText(node)
-            })
-            .Where(item => !string.IsNullOrWhiteSpace(item.Id)
-                && !string.IsNullOrWhiteSpace(item.Label)
-                && question.Contains(item.Label, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        return matches.Count == 1
-            ? (matches[0].Id!, matches[0].Label)
-            : null;
-    }
-
     private async Task<string?> ResolveNodeIdAsync(
         Guid documentId,
         Guid userId,
@@ -1687,10 +1967,20 @@ public class ChatService : IChatService
         };
     }
 
-    private static StoredOperation? GetStoredOperation(string? json) =>
-        string.IsNullOrWhiteSpace(json)
-            ? null
-            : JsonSerializer.Deserialize<StoredOperation>(json);
+    private static StoredOperation? GetStoredOperation(string? json) => GetStoredOperations(json).FirstOrDefault();
+
+    private static IReadOnlyList<StoredOperation> GetStoredOperations(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            var array = JsonSerializer.Deserialize<List<StoredOperation>>(json);
+            if (array is not null) return array;
+        }
+        catch (JsonException) { }
+        var single = JsonSerializer.Deserialize<StoredOperation>(json);
+        return single is null ? [] : [single];
+    }
 
     private static string ResolveStructuredOperationReferences(
         string contentJson,
@@ -1866,23 +2156,11 @@ public class ChatService : IChatService
             "When the user explicitly asks you to change the document, call the matching tool " +
             "instead of describing the change or writing the edited text in your reply:");
         sb.AppendLine(
-            "For structured changes, first call get_document_structure or get_document_text with " +
-            "include_ids=true. Use the returned stable node IDs with the structured editing tools. " +
-            "Structured edits are proposed for approval and are never applied immediately.");
-        sb.AppendLine(
-            "To move a paragraph or section above/below another block, call move_document_node with " +
-            "target_id set to the node being moved, parent_id set to the destination block's ID, " +
-            "and placement set to before or after. To reorder a bullet or numbered list item, " +
-            "target the listItem node, use the list container as parent_id, and use placement " +
-            "at_index with the desired zero-based position. To move into any other container, " +
-            "also use placement at_index with the container ID and zero-based index; use " +
-            "parent_id=null for the document root.");
-        sb.AppendLine(
-            "To convert a numbered list to bullets, or bullets to numbers, call change_list_type " +
-            "on the list container node itself: use list_type=\"bulletList\" for bullets or " +
-            "list_type=\"orderedList\" for numbering. This changes the ProseMirror JSON node type " +
-            "and preserves all listItem children and their content. Never add '-', '*', or numbers " +
-            "to the text to imitate a list format.");
+            "Use find_document_section to resolve a heading reference, get_document_section or " +
+            "get_document_node to read current canonical content, and search_document only to discover likely passages. " +
+            "Semantic search results are not authoritative edit targets. For a simple exact edit, " +
+            "use the full exact block text already supplied in context if it uniquely identifies a block; " +
+            "otherwise retrieve the section first. The backend resolves targets and validates edits.");
         sb.AppendLine(
             "Images are real document nodes. Their structure entries include an image node ID, " +
             "assetId, and dimensions, but this text-only model cannot see the image pixels. " +
@@ -1892,20 +2170,16 @@ public class ChatService : IChatService
             "Never show stable node IDs in your user-facing answer. Use them only as tool arguments; " +
             "refer to the affected section by its readable text or a short description.");
         sb.AppendLine(
-            "- To ADD text to the start, call prepend_text. To ADD text to the end (e.g. \"add a " +
-            "summary\", \"append a conclusion\"), call append_text.");
-        sb.AppendLine(
-            "Use replace_document_node to change or delete an existing paragraph, heading, or code " +
-            "block; use insert_document_node to add a new block anywhere; use delete_document_node " +
-            "to remove a block; use move_document_node to reorder blocks; and use change_list_type " +
-            "for list format changes.");
+            "Use propose_document_edit for every content modification. It accepts one or more " +
+            "typed changes: replace_block, insert, insert_after, delete, move, or change_list_type. " +
+            "For a section rewrite, retrieve the section and provide a scoped sequence of block changes " +
+            "using scope_section_id. Supply complete replacement text and a truthful concise summary. " +
+            "Never submit ProseMirror JSON. All content changes remain pending until user approval.");
         sb.AppendLine(
             "- To rename the document, call rename_document.");
         sb.AppendLine(
-            "All content changes are proposed for review and approval; never say the document has " +
-            "already changed. After a content tool returns a proposal, stop calling tools and give " +
-            "a brief confirmation that the proposal is ready for review. Rename applies immediately. "
-            + "Make at most ONE change per reply. For " +
+            "After an edit proposal is created, stop calling tools and briefly tell the user it is " +
+            "ready for review; never say it has already changed. Rename applies immediately. For " +
             "ordinary questions, just answer normally without calling any tool.");
         var messages = new List<AiMessage>
         {

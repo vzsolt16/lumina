@@ -15,4 +15,10 @@ public interface IDocumentEditorService
         Guid userId,
         DocumentOperation operation,
         CancellationToken cancellationToken = default);
+
+    Task ValidateOperationsAsync(Guid documentId, Guid userId, IReadOnlyList<DocumentOperation> operations,
+        CancellationToken cancellationToken = default);
+
+    Task<DocumentDetailResponse> ApplyOperationsAsync(Guid documentId, Guid userId,
+        IReadOnlyList<DocumentOperation> operations, CancellationToken cancellationToken = default);
 }

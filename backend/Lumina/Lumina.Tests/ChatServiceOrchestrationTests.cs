@@ -37,10 +37,18 @@ public sealed class ChatServiceOrchestrationTests
     }
 
     [Fact]
-    public async Task StructuredEditStillCreatesPendingProposalAndRequiresApproval()
+    public async Task HighLevelEditCreatesPendingProposalAndRequiresApproval()
     {
-        var ai = new ScriptedAiService([[new AiChatDelta(null, [Call("replace_document_node",
-            $"{{\"target_id\":\"{TargetNodeId}\",\"new_text\":\"Updated paragraph\"}}")])]]);
+        var args = JsonSerializer.Serialize(new
+        {
+            summary = "Rewrite the paragraph in two passes",
+            changes = new object[]
+            {
+                new { action = "replace_block", target = TargetNodeId, replacement = "Updated paragraph" },
+                new { action = "replace_block", target = TargetNodeId, replacement = "Final paragraph" }
+            }
+        });
+        var ai = new ScriptedAiService([[new AiChatDelta(null, [Call("propose_document_edit", args)])]]);
         await using var provider = CreateProvider(ai);
         var (documentId, conversationId, userId) = await Seed(provider, "Original paragraph");
 
@@ -50,7 +58,8 @@ public sealed class ChatServiceOrchestrationTests
             var chat = scope.ServiceProvider.GetRequiredService<IChatService>();
             var events = await Collect(chat.StreamAnswerAsync(conversationId, userId, "Rewrite this paragraph", null));
             var proposal = Assert.Single(events, item => item.Type == "proposal");
-            Assert.Equal("Updated paragraph", proposal.Proposal!.Replacement);
+            Assert.Equal("structured", proposal.Proposal!.Kind);
+            Assert.Contains("Replace paragraph", proposal.Proposal.Target);
             assistantMessageId = proposal.Proposal.MessageId;
 
             var beforeApproval = await scope.ServiceProvider.GetRequiredService<LuminaDbContext>()
@@ -58,11 +67,13 @@ public sealed class ChatServiceOrchestrationTests
             Assert.Equal("Original paragraph", beforeApproval);
 
             await chat.ApplyProposalAsync(documentId, conversationId, assistantMessageId, userId);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => chat.ApplyProposalAsync(documentId, conversationId, assistantMessageId, userId));
         }
 
         using var verify = provider.CreateScope();
         var db = verify.ServiceProvider.GetRequiredService<LuminaDbContext>();
-        Assert.Equal("Updated paragraph", await db.Documents.Where(d => d.Id == documentId).Select(d => d.Content).SingleAsync());
+        Assert.Equal("Final paragraph", await db.Documents.Where(d => d.Id == documentId).Select(d => d.Content).SingleAsync());
+        Assert.Equal(2, await db.Documents.Where(d => d.Id == documentId).Select(d => d.ContentVersion).SingleAsync());
         Assert.Equal(EditProposalStatus.Applied, await db.ChatMessages.Where(m => m.Id == assistantMessageId).Select(m => m.ProposalStatus).SingleAsync());
         Assert.Equal(2, await db.ChatMessages.CountAsync(m => m.ConversationId == conversationId));
     }
@@ -84,6 +95,53 @@ public sealed class ChatServiceOrchestrationTests
         using var verify = provider.CreateScope();
         Assert.Empty(await verify.ServiceProvider.GetRequiredService<LuminaDbContext>()
             .ChatMessages.Where(m => m.ConversationId == conversationId).ToListAsync());
+    }
+
+    [Fact]
+    public async Task RejectingHighLevelProposalLeavesCanonicalDocumentUnchanged()
+    {
+        var args = JsonSerializer.Serialize(new
+        {
+            summary = "Replace the paragraph",
+            changes = new[] { new { action = "replace_block", target = TargetNodeId, replacement = "Rejected text" } }
+        });
+        await using var provider = CreateProvider(new ScriptedAiService([[new AiChatDelta(null, [Call("propose_document_edit", args)])]]));
+        var (documentId, conversationId, userId) = await Seed(provider, "Original paragraph");
+        using (var scope = provider.CreateScope())
+        {
+            var chat = scope.ServiceProvider.GetRequiredService<IChatService>();
+            var events = await Collect(chat.StreamAnswerAsync(conversationId, userId, "Rewrite it", null));
+            var proposal = Assert.Single(events, item => item.Type == "proposal").Proposal!;
+            await chat.RejectProposalAsync(documentId, conversationId, proposal.MessageId, userId);
+        }
+        using var verify = provider.CreateScope();
+        var db = verify.ServiceProvider.GetRequiredService<LuminaDbContext>();
+        Assert.Equal("Original paragraph", await db.Documents.Where(d => d.Id == documentId).Select(d => d.Content).SingleAsync());
+        Assert.Equal(EditProposalStatus.Rejected, await db.ChatMessages.Where(m => m.ConversationId == conversationId && m.Role == "assistant").Select(m => m.ProposalStatus).SingleAsync());
+    }
+
+    [Fact]
+    public async Task HighLevelToolCanInsertAfterAResolvedCurrentNode()
+    {
+        var args = JsonSerializer.Serialize(new
+        {
+            summary = "Add a follow-up paragraph",
+            changes = new[] { new { action = "insert_after", target = TargetNodeId, replacement = "Follow-up", node_type = "paragraph" } }
+        });
+        var ai = new ScriptedAiService([[new AiChatDelta(null, [Call("propose_document_edit", args)])]]);
+        await using var provider = CreateProvider(ai);
+        var (documentId, conversationId, userId) = await Seed(provider, "Original paragraph");
+        using var scope = provider.CreateScope();
+        var events = await Collect(scope.ServiceProvider.GetRequiredService<IChatService>()
+            .StreamAnswerAsync(conversationId, userId, "Add a paragraph after this", null));
+        var proposalEvent = events.FirstOrDefault(item => item.Type == "proposal");
+        Assert.True(proposalEvent is not null, string.Join("\n", ai.Requests.SelectMany(request => request)
+            .Where(message => message.Role == "tool").Select(message => message.Content)));
+        var proposal = proposalEvent!.Proposal!;
+        await scope.ServiceProvider.GetRequiredService<IChatService>().ApplyProposalAsync(documentId, conversationId, proposal.MessageId, userId);
+        using var verify = provider.CreateScope();
+        Assert.Equal("Original paragraph\nFollow-up", await verify.ServiceProvider.GetRequiredService<LuminaDbContext>()
+            .Documents.Where(d => d.Id == documentId).Select(d => d.Content).SingleAsync());
     }
 
     private static ServiceProvider CreateProvider(IAiService ai)
@@ -144,7 +202,7 @@ public sealed class ChatServiceOrchestrationTests
     private sealed class FixedContextSelector : IDocumentContextSelector
     {
         public Task<RagContext> SelectAsync(Guid documentId, Guid userId, string question,
-            IReadOnlyList<string> history, CancellationToken ct, int? evidenceBudgetTokens = null) => Task.FromResult(new RagContext("full", "Original content", [], 5));
+            IReadOnlyList<string> history, CancellationToken ct, int? evidenceBudgetTokens = null, bool forceSemantic = false) => Task.FromResult(new RagContext("full", "Original content", [], 5));
     }
 
     private sealed class TestModelCatalog : IGeminiModelCatalog
@@ -158,12 +216,14 @@ public sealed class ChatServiceOrchestrationTests
     private sealed class ScriptedAiService(IReadOnlyList<AiChatDelta[]> turns, bool fail = false) : IAiService
     {
         private int _index;
+        public List<AiMessage[]> Requests { get; } = [];
         public Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000, string? modelId = null) => throw new NotSupportedException();
         public IAsyncEnumerable<string> GenerateStreamAsync(string prompt, int maxTokens = 2000, CancellationToken cancellationToken = default, string? modelId = null) => throw new NotSupportedException();
         public async IAsyncEnumerable<AiChatDelta> ChatStreamAsync(IReadOnlyList<AiMessage> messages, IReadOnlyList<AiTool> tools,
             int maxTokens = 4000, [EnumeratorCancellation] CancellationToken cancellationToken = default, string? modelId = null)
         {
             if (fail) throw new InvalidOperationException("provider failed");
+            Requests.Add(messages.ToArray());
             if (_index >= turns.Count) yield break;
             foreach (var delta in turns[_index++])
             {

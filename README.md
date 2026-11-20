@@ -162,15 +162,23 @@ The default model is configured in:
 ## AI-Assisted Document Editing
 
 Document edits are proposed for user approval rather than applied silently.
-The AI receives the document structure and stable ProseMirror node IDs before
-performing structured edits.
+The assistant can find a section, retrieve current section or node content, and
+search the active document semantically. Semantic results only help discover a
+target; proposed edits are resolved and validated against the current canonical
+document. The model submits typed edit intents, and the backend translates them
+into validated document operations. Multiple related operations can be included
+in one proposal.
+
+Every content proposal is tied to the document version it was prepared against.
+Approval revalidates the version and applies the proposal as one save; rejecting
+it leaves the document unchanged. Each chat is scoped to its active document.
 
 For example, converting a numbered list to bullets changes the list node from
 `orderedList` to `bulletList` while preserving its list items and content. It
 does not add `-` characters to paragraph text to imitate bullets.
 
 Document renaming is an immediate operation. Other content changes remain
-reviewable proposals.
+reviewable proposals and are never applied by the AI tool itself.
 
 ## Ollama Status
 

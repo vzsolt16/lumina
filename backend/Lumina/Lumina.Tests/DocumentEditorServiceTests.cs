@@ -9,6 +9,50 @@ namespace Lumina.Tests;
 public class DocumentEditorServiceTests
 {
     [Fact]
+    public async Task AppliesMultipleValidatedOperationsAtomicallyAndIncrementsVersionOnce()
+    {
+        await using var db = CreateDb();
+        var converter = new ProseMirrorDocumentConverter();
+        var userId = Guid.NewGuid();
+        var document = CreateDocument(userId, converter.CreateFromPlainText("First\nSecond"), converter);
+        db.Documents.Add(document); await db.SaveChangesAsync();
+        var root = JsonNode.Parse(document.ContentJson)!.AsObject();
+        var firstId = root["content"]![0]!["attrs"]!["id"]!.GetValue<string>();
+        var secondId = root["content"]![1]!["attrs"]!["id"]!.GetValue<string>();
+        var editor = new DocumentEditorService(db, converter);
+
+        var result = await editor.ApplyOperationsAsync(document.Id, userId,
+        [
+            new ReplaceDocumentNode(1, firstId, "Updated first"),
+            new DeleteDocumentNode(1, secondId)
+        ]);
+
+        Assert.Equal("Updated first", result.Content);
+        Assert.Equal(2, result.ContentVersion);
+        Assert.Contains(firstId, result.ContentJson);
+        Assert.DoesNotContain(secondId, result.ContentJson);
+    }
+
+    [Fact]
+    public async Task InvalidLaterOperationLeavesEntireBatchUnapplied()
+    {
+        await using var db = CreateDb();
+        var converter = new ProseMirrorDocumentConverter();
+        var userId = Guid.NewGuid();
+        var document = CreateDocument(userId, converter.CreateFromPlainText("Original"), converter);
+        db.Documents.Add(document); await db.SaveChangesAsync();
+        var nodeId = JsonNode.Parse(document.ContentJson)!["content"]![0]!["attrs"]!["id"]!.GetValue<string>();
+        var editor = new DocumentEditorService(db, converter);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => editor.ApplyOperationsAsync(document.Id, userId,
+        [new ReplaceDocumentNode(1, nodeId, "Changed"), new DeleteDocumentNode(1, "missing-node")]));
+
+        var unchanged = await db.Documents.AsNoTracking().SingleAsync(d => d.Id == document.Id);
+        Assert.Equal("Original", unchanged.Content);
+        Assert.Equal(1, unchanged.ContentVersion);
+    }
+
+    [Fact]
     public async Task ReplaceNode_PreservesNodeAttributesAndInlineMarks()
     {
         await using var db = CreateDb();

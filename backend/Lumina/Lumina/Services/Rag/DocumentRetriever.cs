@@ -9,13 +9,15 @@ public sealed record RagContext(string Mode, string Text, IReadOnlyList<Lumina.D
 
 public interface IDocumentContextSelector
 {
-    Task<RagContext> SelectAsync(Guid documentId, Guid userId, string question, IReadOnlyList<string> history, CancellationToken ct, int? evidenceBudgetTokens = null);
+    Task<RagContext> SelectAsync(Guid documentId, Guid userId, string question, IReadOnlyList<string> history,
+        CancellationToken ct, int? evidenceBudgetTokens = null, bool forceSemantic = false);
 }
 
 public sealed class DocumentContextSelector(IServiceScopeFactory scopes, IEmbeddingService embeddings,
     IVectorStore vectors, IConfiguration config, ILogger<DocumentContextSelector> logger) : IDocumentContextSelector
 {
-    public async Task<RagContext> SelectAsync(Guid documentId, Guid userId, string question, IReadOnlyList<string> history, CancellationToken ct, int? evidenceBudgetTokens = null)
+    public async Task<RagContext> SelectAsync(Guid documentId, Guid userId, string question, IReadOnlyList<string> history,
+        CancellationToken ct, int? evidenceBudgetTokens = null, bool forceSemantic = false)
     {
         Lumina.Models.Document? doc;
         using (var scope = scopes.CreateScope())
@@ -31,7 +33,7 @@ public sealed class DocumentContextSelector(IServiceScopeFactory scopes, IEmbedd
         var fullText = doc.Content;
         var fullTokens = DocumentChunker.CountTokens(fullText) + reserved;
         if (string.IsNullOrWhiteSpace(fullText)) return new("none", "", [], reserved, RetrievalOutcome.NoResults);
-        if (evidenceBudgetTokens is not null ? DocumentChunker.CountTokens(fullText) <= evidenceBudgetTokens : fullTokens <= budget)
+        if (!forceSemantic && (evidenceBudgetTokens is not null ? DocumentChunker.CountTokens(fullText) <= evidenceBudgetTokens : fullTokens <= budget))
         {
             if (!string.IsNullOrWhiteSpace(doc.ActiveIndexGeneration) && doc.IndexingStatus != "Indexing")
             {

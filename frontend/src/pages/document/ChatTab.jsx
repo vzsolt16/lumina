@@ -659,7 +659,17 @@ export default function ChatTab() {
                             {m.proposal.status.toUpperCase()}
                           </span>
                         </div>
-                        {m.proposal.kind === 'insert' ? (
+                        {m.proposal.kind === 'structured' ? (
+                          <>
+                            <div className="chat-proposal-caption">// CHANGE SUMMARY</div>
+                            {m.proposal.target && (
+                              <pre className="chat-proposal-block ctx">{m.proposal.target}</pre>
+                            )}
+                            {m.proposal.replacement && (
+                              <pre className="chat-proposal-block ctx">{m.proposal.replacement}</pre>
+                            )}
+                          </>
+                        ) : m.proposal.kind === 'insert' ? (
                           // An insertion: the anchor (if any) is context, not a
                           // deletion — the new text is added after it.
                           <>
