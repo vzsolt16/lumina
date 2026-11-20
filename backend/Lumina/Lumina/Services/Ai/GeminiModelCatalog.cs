@@ -4,7 +4,8 @@ public sealed record GeminiModelDefinition(
     string Id,
     string Name,
     string ApiModel,
-    string? Description = null);
+    string? Description = null,
+    int ContextTokens = 1_048_576);
 
 public interface IGeminiModelCatalog
 {

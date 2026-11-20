@@ -27,6 +27,7 @@ public class ChatService : IChatService
     private readonly IDocumentEditorService _documentEditor;
     private readonly IGeminiModelCatalog _modelCatalog;
     private readonly IDocumentContextSelector _contextSelector;
+    private readonly ChatRequestBudgeter _requestBudgeter;
     private readonly ILogger<ChatService> _logger;
 
     public ChatService(
@@ -37,6 +38,7 @@ public class ChatService : IChatService
         IDocumentEditorService documentEditor,
         IGeminiModelCatalog modelCatalog,
         IDocumentContextSelector contextSelector,
+        ChatRequestBudgeter requestBudgeter,
         ILogger<ChatService> logger)
     {
         _scopeFactory = scopeFactory;
@@ -46,6 +48,7 @@ public class ChatService : IChatService
         _documentEditor = documentEditor;
         _modelCatalog = modelCatalog;
         _contextSelector = contextSelector;
+        _requestBudgeter = requestBudgeter;
         _logger = logger;
     }
 
@@ -247,11 +250,6 @@ public class ChatService : IChatService
             isFirstMessage = history.Count == 0;
         }
 
-        selectedContext = await _contextSelector.SelectAsync(
-            documentId, userId, question, history.Select(h => h.Content).ToArray(), cancellationToken);
-        _logger.LogInformation("Selected {ContextMode} context for document {DocumentId} version {Version}; approximate context tokens {ContextTokens}",
-            selectedContext.Mode, documentId, contentVersion, selectedContext.ApproxTokens);
-        var messages = BuildMessages(fileName, selectedContext, history, question);
         var tools = new List<AiTool>
         {
             RenameDocumentTool, GetDocumentStructureTool, GetDocumentTextTool,
@@ -260,6 +258,14 @@ public class ChatService : IChatService
             ChangeListTypeTool,
             PrependTextTool, AppendTextTool
         };
+        var baseline = BuildMessages(fileName, new RagContext("none", "", [], 0), history, question);
+        var evidenceBudget = Math.Max(0, _requestBudgeter.AvailableInputTokens(resolvedModelId)
+            - ChatRequestBudgeter.EstimateTokens(baseline, tools) - 128);
+        selectedContext = await _contextSelector.SelectAsync(
+            documentId, userId, question, history.Select(h => h.Content).ToArray(), cancellationToken, evidenceBudget);
+        _logger.LogInformation("Selected {ContextMode} context for document {DocumentId} version {Version}; approximate context tokens {ContextTokens}; outcome {Outcome}; complete {Complete}",
+            selectedContext.Mode, documentId, contentVersion, selectedContext.ApproxTokens, selectedContext.Outcome, selectedContext.Complete);
+        var messages = BuildMessages(fileName, selectedContext, history, question);
 
         var askedAt = DateTime.UtcNow;
         // Generated up front so the proposal event streamed to the client refers
@@ -337,6 +343,10 @@ public class ChatService : IChatService
             {
                 switch (orchestrationEvent.Kind)
                 {
+                    case ChatOrchestrationEventKind.RequestBudgetExceeded:
+                        visible.Append(orchestrationEvent.Text);
+                        yield return ChatStreamEvent.ForToken(orchestrationEvent.Text!);
+                        break;
                     case ChatOrchestrationEventKind.Token:
                         visible.Append(orchestrationEvent.Text);
                         yield return ChatStreamEvent.ForToken(orchestrationEvent.Text!);
@@ -1818,8 +1828,6 @@ public class ChatService : IChatService
         string question)
     {
         var sb = new StringBuilder();
-        var boundedContent = LimitContext(context.Text, 24000);
-
         sb.AppendLine(
             "You are Lumina, a friendly AI study assistant. The user has opened a document and " +
             "is chatting with you about it.");
@@ -1839,6 +1847,8 @@ public class ChatService : IChatService
             sb.AppendLine("The document is too large for full context and its index is not current. Do not answer claims about its contents from old or incomplete data; clearly say indexing is pending and ask the user to retry shortly.");
         else
             sb.AppendLine("If the document does not cover something, distinguish general knowledge from what the document says.");
+        if (!context.Complete && context.Limitation is not null)
+            sb.AppendLine($"Document retrieval is incomplete ({context.Outcome}): {context.Limitation} Do not imply omitted content does not exist.");
         sb.AppendLine("Keep answers concise and reply directly.");
         sb.AppendLine(
             "Format your replies in Markdown so they're easy to read: use **bold** for key " +
@@ -1897,34 +1907,16 @@ public class ChatService : IChatService
             "a brief confirmation that the proposal is ready for review. Rename applies immediately. "
             + "Make at most ONE change per reply. For " +
             "ordinary questions, just answer normally without calling any tool.");
-        sb.AppendLine();
-        sb.AppendLine($"--- DOCUMENT CONTEXT ({context.Mode}): {fileName} ---");
-        sb.AppendLine(boundedContent);
-        sb.AppendLine("--- END DOCUMENT ---");
         var messages = new List<AiMessage>
         {
             new("system", sb.ToString())
         };
-
-        var historyChars = 6000;
-        var selectedHistory = new List<ChatMessage>();
-        for (var i = history.Count - 1; i >= 0 && historyChars > 0; i--)
-        {
-            var message = history[i];
-            if (message.Content.Length > historyChars && selectedHistory.Count > 0)
-            {
-                break;
-            }
-
-            selectedHistory.Add(message);
-            historyChars -= message.Content.Length;
-        }
-        selectedHistory.Reverse();
-
-        foreach (var message in selectedHistory)
+        if (!string.IsNullOrWhiteSpace(context.Text))
+            messages.Add(new AiMessage("user", $"--- DOCUMENT CONTEXT ({context.Mode}): {fileName} ---\n{context.Text}\n--- END DOCUMENT ---", Purpose: AiMessagePurpose.Evidence));
+        foreach (var message in history)
         {
             var role = message.Role == "assistant" ? "assistant" : "user";
-            messages.Add(new AiMessage(role, message.Content));
+            messages.Add(new AiMessage(role, message.Content, Purpose: AiMessagePurpose.History));
         }
 
         messages.Add(new AiMessage("user", question));
@@ -1934,16 +1926,14 @@ public class ChatService : IChatService
 
     private static string LimitContext(string value, int maxChars = 24000)
     {
-        if (value.Length <= maxChars)
+        if (value.Length <= maxChars) return value;
+        var output = new StringBuilder("[Retrieval completeness: partial. Whole lines are returned; omitted content continues after this point. Narrow the request by heading or node ID.]\n");
+        foreach (var line in value.Split('\n'))
         {
-            return value;
+            if (output.Length + line.Length + 1 > maxChars && output.Length > 120) break;
+            output.AppendLine(line);
         }
-
-        var headLength = maxChars / 2;
-        var tailLength = maxChars - headLength;
-        return value[..headLength]
-            + "\n\n[… document context truncated; use retrieval tools for omitted sections …]\n\n"
-            + value[^tailLength..];
+        return output.ToString();
     }
 
     private static IReadOnlyList<ChatSource>? DeserializeSources(string? json)

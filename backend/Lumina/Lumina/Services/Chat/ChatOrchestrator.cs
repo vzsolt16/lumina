@@ -24,7 +24,7 @@ public sealed record ToolExecutionResult(
     bool StopAfterTurn = false,
     object? Metadata = null);
 
-public enum ChatOrchestrationEventKind { Token, ToolStarted, ToolCompleted, TurnLimitReached, ToolLimitReached }
+public enum ChatOrchestrationEventKind { Token, ToolStarted, ToolCompleted, TurnLimitReached, ToolLimitReached, RequestBudgetExceeded }
 
 public sealed record ChatOrchestrationEvent(
     ChatOrchestrationEventKind Kind,
@@ -33,7 +33,7 @@ public sealed record ChatOrchestrationEvent(
     ToolExecutionResult? ToolResult = null);
 
 /// <summary>Coordinates provider turns and tool execution without owning feature-specific tool logic.</summary>
-public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestrator> logger)
+public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestrator> logger, ChatRequestBudgeter? budgeter = null)
 {
     public const int MaxModelTurns = 5;
     public const int MaxToolExecutions = 20;
@@ -54,6 +54,33 @@ public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestra
         for (var turn = 0; turn < MaxModelTurns; turn++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (budgeter is not null)
+            {
+                var inputBudget = budgeter.AvailableInputTokens(modelId);
+                var fits = budgeter.Fit(messages, tools, inputBudget);
+                if (fits)
+                {
+                    var providerCount = await aiService.CountInputTokensAsync(messages, tools, cancellationToken, modelId);
+                    // When a provider exposes counting, use it for final admission. The local estimate
+                    // remains the fallback and the provider count may omit transport framing.
+                    while (providerCount is not null && providerCount > inputBudget)
+                    {
+                        var conservativeLimit = inputBudget - (providerCount.Value - inputBudget) - 32;
+                        var priorCount = messages.Count;
+                        var priorEstimate = ChatRequestBudgeter.EstimateTokens(messages, tools);
+                        if (!budgeter.Fit(messages, tools, Math.Max(0, conservativeLimit))
+                            || (messages.Count == priorCount && ChatRequestBudgeter.EstimateTokens(messages, tools) == priorEstimate))
+                        { fits = false; break; }
+                        providerCount = await aiService.CountInputTokensAsync(messages, tools, cancellationToken, modelId);
+                    }
+                }
+                if (!fits)
+                {
+                    yield return new(ChatOrchestrationEventKind.RequestBudgetExceeded,
+                        "The required instructions, current message, and tool protocol exceed this model's configured context budget. Please shorten the request.");
+                    yield break;
+                }
+            }
             var requestWatch = System.Diagnostics.Stopwatch.StartNew();
             var calls = new List<AiToolCall>();
             var rawText = new StringBuilder();
@@ -78,6 +105,9 @@ public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestra
                     }
                     if (!hasNext) break;
                     var delta = stream.Current;
+                    if (delta.Usage is not null)
+                        logger.LogInformation("Chat provider usage. ConversationId={ConversationId} ModelId={ModelId} InputTokens={InputTokens} OutputTokens={OutputTokens} TotalTokens={TotalTokens}",
+                            conversationId, modelId, delta.Usage.InputTokens, delta.Usage.OutputTokens, delta.Usage.TotalTokens);
                     if (delta.ToolCalls is { Count: > 0 } deltaCalls) calls.AddRange(deltaCalls);
                     if (string.IsNullOrEmpty(delta.Content)) continue;
 

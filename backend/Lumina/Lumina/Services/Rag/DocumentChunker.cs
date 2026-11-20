@@ -3,7 +3,8 @@ using System.Text.Json.Nodes;
 
 namespace Lumina.Services.Rag;
 
-public sealed record DocumentChunk(int Index, string Text, string? Heading, IReadOnlyList<string> NodeIds);
+public sealed record DocumentChunk(int Index, string Text, string? Heading, IReadOnlyList<string> NodeIds,
+    IReadOnlyList<string>? HeadingPath = null, int StartBlockIndex = 0, int EndBlockIndex = 0);
 
 public interface IDocumentChunker
 {
@@ -17,7 +18,7 @@ public interface IDocumentChunker
 /// </summary>
 public sealed class DocumentChunker(IConfiguration configuration) : IDocumentChunker
 {
-    public const string Version = "blocks-v1";
+    public const string Version = "blocks-v2";
     private readonly int _chunkTokens = Math.Clamp(configuration.GetValue("Rag:ChunkTokens", 400), 100, 1000);
     private readonly int _overlapTokens = Math.Clamp(configuration.GetValue("Rag:OverlapTokens", 60), 0, 250);
 
@@ -26,34 +27,19 @@ public sealed class DocumentChunker(IConfiguration configuration) : IDocumentChu
         if (string.IsNullOrWhiteSpace(contentJson)) return [];
         var root = JsonNode.Parse(contentJson) as JsonObject;
         if (root is null) return [];
-        var blocks = new List<(string Text, string? Heading, string[] Ids)>();
-        string? heading = null;
-        string? headingId = null;
-        if (root["content"] is JsonArray content)
-        {
-            foreach (var node in content.OfType<JsonObject>())
-            {
-                var type = node["type"]?.GetValue<string>();
-                var text = ReadText(node).Trim();
-                if (type == "heading")
-                {
-                    if (text.Length > 0) { heading = text; headingId = node["attrs"]?["id"]?.GetValue<string>(); }
-                    continue;
-                }
-                if (text.Length > 0)
-                    blocks.Add((text, heading, NodeIds(node).Concat(headingId is null ? [] : [headingId]).Distinct().ToArray()));
-            }
-        }
+        var blocks = ReadBlocks(root);
 
         var output = new List<DocumentChunk>();
         var currentText = new StringBuilder();
         var currentHeading = (string?)null;
         var currentIds = new List<string>();
+        IReadOnlyList<string> currentPath = [];
+        var currentStart = 0; var currentEnd = 0;
         var currentTokens = 0;
         void Flush()
         {
             var text = currentText.ToString().Trim();
-            if (text.Length > 0) output.Add(new(output.Count, text, currentHeading, currentIds.Distinct().ToArray()));
+            if (text.Length > 0) output.Add(new(output.Count, text, currentHeading, currentIds.Distinct().ToArray(), currentPath, currentStart, currentEnd));
             currentText.Clear(); currentIds.Clear(); currentTokens = 0;
         }
 
@@ -75,10 +61,11 @@ public sealed class DocumentChunker(IConfiguration configuration) : IDocumentChu
                         if (overlap.Length > 0) { currentText.Append(overlap).Append("\n"); currentTokens = CountTokens(overlap); currentIds.AddRange(priorIds); }
                     }
                 }
-                if (currentText.Length == 0) currentHeading = block.Heading;
+                if (currentText.Length == 0) { currentHeading = block.Heading; currentPath = block.Path; currentStart = block.Index; }
                 if (currentText.Length > 0) currentText.AppendLine();
                 currentText.Append(part);
                 currentIds.AddRange(block.Ids);
+                currentEnd = block.Index;
                 currentTokens += count;
                 if (currentTokens >= _chunkTokens)
                 {
@@ -95,6 +82,48 @@ public sealed class DocumentChunker(IConfiguration configuration) : IDocumentChu
         }
         Flush();
         return output;
+    }
+
+    private sealed record TextBlock(int Index, string Text, string? Heading, IReadOnlyList<string> Path, string[] Ids);
+    private static List<TextBlock> ReadBlocks(JsonObject root)
+    {
+        var result = new List<TextBlock>(); var headings = new List<(int Level, string Title, string? Id)>();
+        void Visit(JsonObject node)
+        {
+            var type = node["type"]?.GetValue<string>() ?? "";
+            if (type == "heading")
+            {
+                var title = ReadText(node).Trim();
+                if (title.Length > 0)
+                {
+                    var level = Math.Clamp(node["attrs"]?["level"]?.GetValue<int>() ?? 1, 1, 6);
+                    while (headings.Count > 0 && headings[^1].Level >= level) headings.RemoveAt(headings.Count - 1);
+                    headings.Add((level, title, node["attrs"]?["id"]?.GetValue<string>()));
+                }
+                return;
+            }
+            if (type is "paragraph" or "listItem" or "taskItem" or "codeBlock" or "tableCell" or "tableHeader")
+            {
+                var text = ReadText(node).Trim();
+                if (text.Length == 0) return;
+                var path = headings.Select(h => h.Title).ToArray();
+                var ids = NodeIds(node).Concat(headings.Where(h => h.Id is not null).Select(h => h.Id!)).Distinct().ToArray();
+                result.Add(new(result.Count, text, path.LastOrDefault(), path, ids));
+                return;
+            }
+            if (node["content"] is JsonArray children)
+            {
+                // Recurse through containers while retaining text blocks as their original source units.
+                if (children.OfType<JsonObject>().Any()) { foreach (var child in children.OfType<JsonObject>()) Visit(child); return; }
+            }
+            var fallbackText = ReadText(node).Trim();
+            if (fallbackText.Length == 0) return;
+            var fallbackPath = headings.Select(h => h.Title).ToArray();
+            var fallbackIds = NodeIds(node).Concat(headings.Where(h => h.Id is not null).Select(h => h.Id!)).Distinct().ToArray();
+            result.Add(new(result.Count, fallbackText, fallbackPath.LastOrDefault(), fallbackPath, fallbackIds));
+        }
+        if (root["content"] is JsonArray content) foreach (var node in content.OfType<JsonObject>()) Visit(node);
+        return result;
     }
 
     private static IEnumerable<string> SplitOversized(string text, int limit)

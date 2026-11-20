@@ -4,6 +4,9 @@ namespace Lumina.Services.AI;
 
 public interface IAiService
 {
+    Task<int?> CountInputTokensAsync(IReadOnlyList<AiMessage> messages, IReadOnlyList<AiTool> tools,
+        CancellationToken cancellationToken = default, string? modelId = null) => Task.FromResult<int?>(null);
+
     Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000,
         string? modelId = null);
 

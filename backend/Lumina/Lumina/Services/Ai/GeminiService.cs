@@ -23,6 +23,16 @@ public sealed class GeminiService : IAiService
         _logger = logger;
     }
 
+    public async Task<int?> CountInputTokensAsync(IReadOnlyList<AiMessage> messages, IReadOnlyList<AiTool> tools,
+        CancellationToken cancellationToken = default, string? modelId = null)
+    {
+        var body = CreateRequestBody(messages, tools, 4000);
+        using var response = await SendAsync("countTokens", modelId, body, cancellationToken);
+        var json = await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Gemini returned an empty token-count response.");
+        return json["totalTokens"]?.GetValue<int>();
+    }
+
     public async Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000,
         string? modelId = null)
     {
@@ -65,10 +75,12 @@ public sealed class GeminiService : IAiService
         await foreach (var json in StreamAsync(modelId, body, cancellationToken))
         {
             var parts = json["candidates"]?[0]?["content"]?["parts"]?.AsArray();
-            if (parts is null)
-            {
-                continue;
-            }
+            var usageJson = json["usageMetadata"];
+            var usage = usageJson is null ? null : new AiUsageMetadata(
+                usageJson["promptTokenCount"]?.GetValue<int>(),
+                usageJson["candidatesTokenCount"]?.GetValue<int>(),
+                usageJson["totalTokenCount"]?.GetValue<int>());
+            if (parts is null) { if (usage is not null) yield return new AiChatDelta(null, null, usage); continue; }
 
             var text = string.Join(string.Empty,
                 parts.Select(part => part?["text"]?.GetValue<string>() ?? string.Empty));
@@ -84,9 +96,9 @@ public sealed class GeminiService : IAiService
                 })
                 .ToList();
 
-            if (text.Length > 0 || calls.Count > 0)
+            if (text.Length > 0 || calls.Count > 0 || usage is not null)
             {
-                yield return new AiChatDelta(text, calls.Count == 0 ? null : calls);
+                yield return new AiChatDelta(text, calls.Count == 0 ? null : calls, usage);
             }
         }
     }

@@ -12,7 +12,10 @@ public sealed record AiMessage(
     string Role,
     string Content,
     IReadOnlyList<AiToolCall>? ToolCalls = null,
-    string? ToolName = null);
+    string? ToolName = null,
+    AiMessagePurpose Purpose = AiMessagePurpose.Required);
+
+public enum AiMessagePurpose { Required, History, Evidence }
 
 // A tool the model may call. Parameters is a JSON Schema object describing the
 // arguments.
@@ -27,4 +30,5 @@ public sealed record AiToolCall(
 
 // One streamed delta from a chat turn: a content fragment, and/or the completed
 // tool-call list (Ollama emits tool calls assembled, not token-by-token).
-public sealed record AiChatDelta(string? Content, IReadOnlyList<AiToolCall>? ToolCalls);
+public sealed record AiUsageMetadata(int? InputTokens = null, int? OutputTokens = null, int? TotalTokens = null);
+public sealed record AiChatDelta(string? Content, IReadOnlyList<AiToolCall>? ToolCalls, AiUsageMetadata? Usage = null);

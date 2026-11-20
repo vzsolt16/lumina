@@ -50,4 +50,15 @@ public sealed class DocumentChunkerTests
         Assert.Contains("First item", chunks[0].Text);
         Assert.Contains("Second item", chunks[0].Text);
     }
+
+    [Fact]
+    public void PreservesNestedHeadingPathAndAncestorIds()
+    {
+        var chunks = Create().Chunk("""{"type":"doc","content":[{"type":"heading","attrs":{"id":"h1","level":1},"content":[{"type":"text","text":"Chapter"}]},{"type":"blockquote","attrs":{"id":"quote"},"content":[{"type":"heading","attrs":{"id":"h2","level":2},"content":[{"type":"text","text":"Nested"}]},{"type":"paragraph","attrs":{"id":"p"},"content":[{"type":"text","text":"Evidence."}]}]}]}""");
+        var chunk = Assert.Single(chunks);
+        Assert.Equal(new[] { "Chapter", "Nested" }, chunk.HeadingPath);
+        Assert.Contains("h1", chunk.NodeIds);
+        Assert.Contains("h2", chunk.NodeIds);
+        Assert.Contains("p", chunk.NodeIds);
+    }
 }

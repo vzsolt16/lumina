@@ -56,4 +56,11 @@ public sealed record ChatSource(
     string DocumentName,
     string? Heading,
     int ChunkIndex,
-    IReadOnlyList<string> NodeIds);
+    IReadOnlyList<string> NodeIds,
+    IReadOnlyList<string>? HeadingPath = null,
+    int? DocumentVersion = null,
+    string? RetrievalMethod = null,
+    float? RelevanceScore = null,
+    int? StartBlockIndex = null,
+    int? EndBlockIndex = null,
+    bool Complete = true);

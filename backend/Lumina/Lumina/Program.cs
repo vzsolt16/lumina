@@ -150,6 +150,7 @@ builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IFlashcardService, FlashcardService>();
 builder.Services.AddScoped<ChatOrchestrator>();
+builder.Services.AddScoped<ChatRequestBudgeter>();
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddSingleton<IGeminiModelCatalog, GeminiModelCatalog>();
 

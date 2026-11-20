@@ -52,7 +52,7 @@ public sealed class QdrantVectorStore(HttpClient http, IConfiguration config) : 
     public async Task UpsertAsync(IReadOnlyList<VectorRecord> points, CancellationToken ct)
     {
         if (points.Count == 0) return;
-        using var response = await http.PutAsJsonAsync($"collections/{_collection}/points?wait=true", new { points = points.Select(p => new { id = p.Id, vector = p.Vector, payload = new { userId = p.UserId, documentId = p.DocumentId, documentVersion = p.DocumentVersion, generation = p.Generation, chunkIndex = p.Chunk.Index, text = p.Chunk.Text, heading = p.Chunk.Heading, nodeIds = p.Chunk.NodeIds, embeddingModel = p.EmbeddingModel } }) }, ct);
+        using var response = await http.PutAsJsonAsync($"collections/{_collection}/points?wait=true", new { points = points.Select(p => new { id = p.Id, vector = p.Vector, payload = new { userId = p.UserId, documentId = p.DocumentId, documentVersion = p.DocumentVersion, generation = p.Generation, chunkIndex = p.Chunk.Index, text = p.Chunk.Text, heading = p.Chunk.Heading, headingPath = p.Chunk.HeadingPath, startBlockIndex = p.Chunk.StartBlockIndex, endBlockIndex = p.Chunk.EndBlockIndex, nodeIds = p.Chunk.NodeIds, embeddingModel = p.EmbeddingModel } }) }, ct);
         response.EnsureSuccessStatusCode();
         using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
         if (result.RootElement.TryGetProperty("status", out var status) && status.GetString() != "ok") throw new InvalidOperationException("Qdrant did not confirm vector insertion.");
@@ -70,7 +70,8 @@ public sealed class QdrantVectorStore(HttpClient http, IConfiguration config) : 
         {
             var payload = p.GetProperty("payload");
             var ids = payload.TryGetProperty("nodeIds", out var ni) ? ni.EnumerateArray().Select(x => x.GetString()!).ToArray() : [];
-            return new VectorMatch(Guid.Parse(payload.GetProperty("documentId").GetString()!), payload.GetProperty("documentVersion").GetInt32(), payload.GetProperty("generation").GetString()!, new DocumentChunk(payload.GetProperty("chunkIndex").GetInt32(), payload.GetProperty("text").GetString() ?? "", payload.TryGetProperty("heading", out var h) && h.ValueKind == JsonValueKind.String ? h.GetString() : null, ids), p.GetProperty("score").GetSingle());
+            var path = payload.TryGetProperty("headingPath", out var hp) && hp.ValueKind == JsonValueKind.Array ? hp.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : [];
+            return new VectorMatch(Guid.Parse(payload.GetProperty("documentId").GetString()!), payload.GetProperty("documentVersion").GetInt32(), payload.GetProperty("generation").GetString()!, new DocumentChunk(payload.GetProperty("chunkIndex").GetInt32(), payload.GetProperty("text").GetString() ?? "", payload.TryGetProperty("heading", out var h) && h.ValueKind == JsonValueKind.String ? h.GetString() : null, ids, path, payload.TryGetProperty("startBlockIndex", out var si) ? si.GetInt32() : 0, payload.TryGetProperty("endBlockIndex", out var ei) ? ei.GetInt32() : 0), p.GetProperty("score").GetSingle());
         }).ToArray();
     }
 

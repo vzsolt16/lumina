@@ -8,6 +8,7 @@ using Lumina.Services.Documents;
 using Lumina.Services.Rag;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 
 namespace Lumina.Tests;
 
@@ -89,6 +90,7 @@ public sealed class ChatServiceOrchestrationTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         var databaseName = Guid.NewGuid().ToString();
         services.AddDbContext<LuminaDbContext>(options => options.UseInMemoryDatabase(databaseName));
         services.AddSingleton<IAiService>(ai);
@@ -96,6 +98,7 @@ public sealed class ChatServiceOrchestrationTests
         services.AddSingleton<IDocumentContextBuilder, DocumentContextBuilder>();
         services.AddSingleton<IDocumentContextSelector, FixedContextSelector>();
         services.AddSingleton<IGeminiModelCatalog, TestModelCatalog>();
+        services.AddSingleton<ChatRequestBudgeter>();
         services.AddScoped<IDocumentEditorService, DocumentEditorService>();
         services.AddScoped<ChatOrchestrator>();
         services.AddScoped<IChatService, ChatService>();
@@ -141,7 +144,7 @@ public sealed class ChatServiceOrchestrationTests
     private sealed class FixedContextSelector : IDocumentContextSelector
     {
         public Task<RagContext> SelectAsync(Guid documentId, Guid userId, string question,
-            IReadOnlyList<string> history, CancellationToken ct) => Task.FromResult(new RagContext("full", "Original content", [], 5));
+            IReadOnlyList<string> history, CancellationToken ct, int? evidenceBudgetTokens = null) => Task.FromResult(new RagContext("full", "Original content", [], 5));
     }
 
     private sealed class TestModelCatalog : IGeminiModelCatalog

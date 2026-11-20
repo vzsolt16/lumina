@@ -19,7 +19,9 @@ public sealed class DocumentIndexService(LuminaDbContext db, IDocumentChunker ch
         var generation = Guid.NewGuid().ToString("N");
         try
         {
-            if (DocumentChunker.CountTokens(document.Content) + 5200 <= config.GetValue("Rag:ContextTokenBudget", 12000))
+            // Keep an index for mid-sized documents as a fallback when request
+            // history, tools, or a smaller configured model leaves little room.
+            if (DocumentChunker.CountTokens(document.Content) <= config.GetValue("Rag:FullDocumentMaxTokens", 2000))
             {
                 await vectors.DeleteDocumentAsync(document.Id, ct);
                 document.ActiveIndexGeneration = null;
