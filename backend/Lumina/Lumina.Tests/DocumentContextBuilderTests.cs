@@ -31,6 +31,22 @@ public class DocumentContextBuilderTests
     }
 
     [Fact]
+    public async Task ReturnsCanonicalSourceTextWithoutProseMirrorConversion()
+    {
+        const string source = "# Heading\r\n\r\n    indented()";
+        var document = new Document { FileName = "sample.py", Content = source, ContentJson = "" };
+
+        var text = await _builder.BuildAsync(document, DocumentContextType.PlainText);
+        var withIds = await _builder.BuildAsync(document, DocumentContextType.TextWithIds);
+        var outline = await _builder.BuildAsync(document, DocumentContextType.StructureOutline);
+
+        Assert.Equal(source, text);
+        Assert.Equal(source, withIds);
+        Assert.Contains("Source text: sample.py", outline);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _builder.BuildAsync(document, DocumentContextType.StructuredJson));
+    }
+
+    [Fact]
     public async Task TextWithIdsIncludesNestedBlockIds()
     {
         var converter = new ProseMirrorDocumentConverter();

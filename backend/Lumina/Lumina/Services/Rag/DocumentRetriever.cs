@@ -35,13 +35,6 @@ public sealed class DocumentContextSelector(IServiceScopeFactory scopes, IEmbedd
         if (string.IsNullOrWhiteSpace(fullText)) return new("none", "", [], reserved, RetrievalOutcome.NoResults);
         if (!forceSemantic && (evidenceBudgetTokens is not null ? DocumentChunker.CountTokens(fullText) <= evidenceBudgetTokens : fullTokens <= budget))
         {
-            if (!string.IsNullOrWhiteSpace(doc.ActiveIndexGeneration) && doc.IndexingStatus != "Indexing")
-            {
-                await vectors.DeleteDocumentAsync(doc.Id, ct);
-                using var scope = scopes.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
-                await db.Documents.Where(d => d.Id == doc.Id).ExecuteUpdateAsync(s => s.SetProperty(d => d.ActiveIndexGeneration, (string?)null).SetProperty(d => d.IndexingStatus, "NotIndexed"), ct);
-            }
             return new("full", fullText, [], fullTokens);
         }
         if (evidenceBudgetTokens is not null && !string.IsNullOrWhiteSpace(doc.ContentJson))
@@ -77,7 +70,8 @@ public sealed class DocumentContextSelector(IServiceScopeFactory scopes, IEmbedd
                 logger.LogWarning("Structural document retrieval could not parse document {DocumentId} version {Version}: {ErrorType}", doc.Id, doc.ContentVersion, ex.GetType().Name);
             }
         }
-        if (doc.IndexingStatus != "Indexed" || doc.IndexedContentVersion != doc.ContentVersion || doc.ActiveIndexGeneration is null)
+        if (doc.IndexingStatus != "Indexed" || doc.IndexedContentVersion != doc.ContentVersion
+            || doc.ChunkingVersion != DocumentChunker.Version || doc.ActiveIndexGeneration is null)
         {
             var outcome = doc.IndexingStatus == "Indexing" || doc.IndexingStatus == "Pending" ? RetrievalOutcome.Indexing
                 : doc.IndexedContentVersion is not null || doc.ActiveIndexGeneration is not null ? RetrievalOutcome.IndexStale

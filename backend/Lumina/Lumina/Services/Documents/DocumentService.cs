@@ -56,7 +56,8 @@ public class DocumentService : IDocumentService
         buffer.Position = 0;
 
         buffer.Position = 0;
-        var extractedDocument = await _contentExtractor.ExtractStructuredAsync(
+        var isSourceText = DocumentFormatDescriptor.IsSourceText(extension);
+        var extractedDocument = isSourceText ? null : await _contentExtractor.ExtractStructuredAsync(
             extension,
             buffer,
             cancellationToken);
@@ -64,9 +65,11 @@ public class DocumentService : IDocumentService
         var content = extractedDocument?.ContentJson is null
             ? await _contentExtractor.ExtractAsync(extension, buffer, cancellationToken)
             : _contentConverter.ExtractPlainText(extractedDocument.ContentJson);
-        var contentJson = extractedDocument?.ContentJson is null
-            ? _contentConverter.CreateFromPlainText(content)
-            : extractedDocument.ContentJson;
+        var contentJson = isSourceText
+            ? string.Empty
+            : extractedDocument?.ContentJson is null
+                ? _contentConverter.CreateFromPlainText(content)
+                : extractedDocument.ContentJson;
         var document = new Document
         {
             Id = Guid.NewGuid(),
@@ -77,7 +80,7 @@ public class DocumentService : IDocumentService
             OriginalStorageKey = $"documents/{userId:D}/{Guid.NewGuid():N}{extension}",
             OriginalContentType = GetServerContentType(extension),
             Content = content,
-            ContentJson = _contentConverter.Normalize(contentJson),
+            ContentJson = string.IsNullOrEmpty(contentJson) ? string.Empty : _contentConverter.Normalize(contentJson),
             FileSize = file.Length,
             ContentSize = Encoding.UTF8.GetByteCount(content),
             ContentVersion = 1,
@@ -187,7 +190,8 @@ public class DocumentService : IDocumentService
                 UploadedAt = document.UploadedAt,
                 UpdatedAt = document.UpdatedAt,
                 Content = document.Content,
-                ContentJson = document.ContentJson
+                ContentJson = document.ContentJson,
+                Capabilities = DocumentFormatDescriptor.Describe(document.FileName, document.ContentJson)
             };
     }
 
@@ -317,6 +321,7 @@ public class DocumentService : IDocumentService
 
         if (request.Content is not null)
         {
+            EnsureExpectedVersion(document, request.ExpectedContentVersion);
             var didChange = DocumentContentMutation.Apply(document, request.Content, _contentConverter);
             changed |= didChange;
             contentChanged |= didChange;
@@ -324,12 +329,9 @@ public class DocumentService : IDocumentService
 
         if (request.ContentJson is not null)
         {
-            if (request.ExpectedContentVersion is not null
-                && request.ExpectedContentVersion.Value != document.ContentVersion)
-            {
-                throw new InvalidOperationException(
-                    "The document changed before this update was applied. Reload it and try again.");
-            }
+            EnsureExpectedVersion(document, request.ExpectedContentVersion);
+            if (DocumentFormatDescriptor.UsesCanonicalSourceText(document.FileName, document.ContentJson))
+                throw new InvalidOperationException("This format uses source text, not structured editor content.");
 
             string normalized;
             try
@@ -421,8 +423,15 @@ public class DocumentService : IDocumentService
         UploadedAt = document.UploadedAt,
         UpdatedAt = document.UpdatedAt,
         Content = document.Content,
-        ContentJson = document.ContentJson
+        ContentJson = document.ContentJson,
+        Capabilities = DocumentFormatDescriptor.Describe(document.FileName, document.ContentJson)
     };
+
+    private static void EnsureExpectedVersion(Document document, int? expectedVersion)
+    {
+        if (expectedVersion is not null && expectedVersion.Value != document.ContentVersion)
+            throw new InvalidOperationException("The document changed before this update was applied. Reload it and try again.");
+    }
 
     private static string GetServerContentType(string extension) => extension switch
     {

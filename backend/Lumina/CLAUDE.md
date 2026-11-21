@@ -90,6 +90,22 @@ Lumina is a study-assistant API. Users upload documents (`.txt`, `.md`, `.pdf` a
 
 **AI service:** `IAiService` is the provider boundary. Both `GeminiService` and `OllamaService` implement it; `Program.cs` currently registers Gemini. Quiz/flashcard generation uses `GenerateAsync` with a JSON schema, and chat uses `ChatStreamAsync`. `AiMessage`, `AiTool`, `AiToolCall`, and `AiChatDelta` are provider-neutral contracts. Provider-specific request/response formats and streaming differences stay inside each provider implementation.
 
+## Document representations and RAG
+
+`DocumentFormatDescriptor` is the backend capability policy. New `.txt`, `.md`,
+and supported source/config uploads keep canonical UTF-8 text in `Document.Content`
+and leave `ContentJson` empty. Existing rows with nonempty `ContentJson` stay on
+the explicit legacy ProseMirror path. PDF/DOCX continue to store extracted
+ProseMirror content while immutable uploaded bytes remain in original storage.
+Document detail responses include capabilities; `GET /api/documents/{id}/content`
+exports current editable content, while `/original` returns original bytes.
+
+`DocumentEditorService` retains ProseMirror operations for structured documents
+and applies exact, version-checked text ranges for source-text proposals. Chat
+proposals still require user approval. `DocumentIndexService` chunks the active
+canonical representation and stores format, heading, and line-range metadata in
+Qdrant. `DocumentChunker.Version` invalidates older generations for rebuild.
+
 **Chat ("chat with your document") — a different shape from quiz/flashcards.** Chat is a direct request/response stream, **not** a background job, so it does not use `IBackgroundTaskQueue` or the group/replay hub pattern.
 
 1. The client opens `/ws/chat` (`ChatHub`) and calls `StreamAnswer(conversationId, question, modelId)`, a native SignalR streaming method returning typed `ChatStreamEvent`s. SignalR injects the `CancellationToken` and cancels it when the client unsubscribes or disconnects.

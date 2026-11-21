@@ -39,6 +39,7 @@ public sealed class DocumentEditorService : IDocumentEditorService
         var document = await _db.Documents
             .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken)
             ?? throw new KeyNotFoundException("Document not found.");
+        EnsureStructuredRepresentation(document);
 
         if (document.ContentVersion != operation.ExpectedContentVersion)
         {
@@ -71,6 +72,58 @@ public sealed class DocumentEditorService : IDocumentEditorService
         return ToResponse(document);
     }
 
+    public async Task<DocumentDetailResponse> ApplyTextOperationsAsync(
+        Guid documentId, Guid userId, int expectedVersion, IReadOnlyList<TextDocumentOperation> operations,
+        CancellationToken cancellationToken = default)
+    {
+        if (operations.Count is < 1 or > 25) throw new InvalidOperationException("A text edit must contain between 1 and 25 operations.");
+        var document = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("Document not found.");
+        if (!DocumentFormatDescriptor.UsesCanonicalSourceText(document.FileName, document.ContentJson))
+            throw new InvalidOperationException("Text operations are only valid for source-text documents.");
+        if (document.ContentVersion != expectedVersion)
+            throw new InvalidOperationException("The document changed before this operation was applied. Reload it and try again.");
+
+        var ordered = operations.OrderByDescending(o => o.Start).ToArray();
+        var priorStart = document.Content.Length + 1;
+        foreach (var operation in ordered)
+        {
+            if (operation.Start < 0 || operation.Start > document.Content.Length
+                || operation.Start + operation.ExpectedText.Length > document.Content.Length
+                || !document.Content.AsSpan(operation.Start, operation.ExpectedText.Length).SequenceEqual(operation.ExpectedText.AsSpan()))
+                throw new InvalidOperationException("The proposed text target no longer matches the current document. Retrieve the current content and prepare the proposal again.");
+            if (operation.Start + operation.ExpectedText.Length > priorStart)
+                throw new InvalidOperationException("Text edit targets overlap. Prepare separate proposals.");
+            priorStart = operation.Start;
+        }
+
+        var updated = new StringBuilder(document.Content);
+        foreach (var operation in ordered)
+        {
+            updated.Remove(operation.Start, operation.ExpectedText.Length);
+            updated.Insert(operation.Start, operation.Replacement);
+        }
+        var content = updated.ToString();
+        DocumentValidation.ValidateEditableContent(content);
+        DocumentFormatDescriptor.ValidateSourceTextSyntax(document.FileName, content);
+        if (string.Equals(content, document.Content, StringComparison.Ordinal))
+            throw new InvalidOperationException("The proposed change does not modify the document.");
+        document.Content = content;
+        document.ContentSize = Encoding.UTF8.GetByteCount(content);
+        document.ContentVersion++;
+        document.UpdatedAt = DateTime.UtcNow;
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _indexScheduler?.Schedule(document.Id);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new InvalidOperationException("The document changed before this operation was applied. Reload it and try again.", ex);
+        }
+        return ToResponse(document);
+    }
+
     public async Task ValidateOperationAsync(
         Guid documentId,
         Guid userId,
@@ -80,6 +133,7 @@ public sealed class DocumentEditorService : IDocumentEditorService
         var document = await _db.Documents
             .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken)
             ?? throw new KeyNotFoundException("Document not found.");
+        EnsureStructuredRepresentation(document);
 
         if (document.ContentVersion != operation.ExpectedContentVersion)
         {
@@ -97,6 +151,7 @@ public sealed class DocumentEditorService : IDocumentEditorService
         ValidateBatch(operations);
         var document = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken)
             ?? throw new KeyNotFoundException("Document not found.");
+        EnsureStructuredRepresentation(document);
         EnsureVersion(document.ContentVersion, operations[0].ExpectedContentVersion);
         var root = JsonNode.Parse(_converter.Normalize(document.ContentJson))!.AsObject();
         foreach (var operation in operations) ApplyOperation(root, operation);
@@ -108,6 +163,7 @@ public sealed class DocumentEditorService : IDocumentEditorService
         ValidateBatch(operations);
         var document = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken)
             ?? throw new KeyNotFoundException("Document not found.");
+        EnsureStructuredRepresentation(document);
         EnsureVersion(document.ContentVersion, operations[0].ExpectedContentVersion);
         var root = JsonNode.Parse(_converter.Normalize(document.ContentJson))!.AsObject();
         foreach (var operation in operations) ApplyOperation(root, operation);
@@ -134,6 +190,12 @@ public sealed class DocumentEditorService : IDocumentEditorService
         if (operations.Count is < 1 or > 25) throw new InvalidOperationException("An edit proposal must contain between 1 and 25 operations.");
         if (operations.Any(op => op.ExpectedContentVersion != operations[0].ExpectedContentVersion))
             throw new InvalidOperationException("All operations in a proposal must target the same document version.");
+    }
+
+    private static void EnsureStructuredRepresentation(Document document)
+    {
+        if (DocumentFormatDescriptor.UsesCanonicalSourceText(document.FileName, document.ContentJson))
+            throw new InvalidOperationException("This document uses canonical source text and requires a text-based edit operation.");
     }
 
     private static void EnsureVersion(int currentVersion, int expectedVersion)
@@ -490,6 +552,7 @@ public sealed class DocumentEditorService : IDocumentEditorService
         UploadedAt = document.UploadedAt,
         UpdatedAt = document.UpdatedAt,
         Content = document.Content,
-        ContentJson = document.ContentJson
+        ContentJson = document.ContentJson,
+        Capabilities = DocumentFormatDescriptor.Describe(document.FileName, document.ContentJson)
     };
 }

@@ -56,6 +56,34 @@ public sealed class DocumentIndexServiceTests
         Assert.All(vectors.Upserted, point => Assert.Equal(stored.ActiveIndexGeneration, point.Generation));
     }
 
+    [Fact]
+    public async Task IndexesCanonicalMarkdownWithHeadingAndFormatMetadata()
+    {
+        var options = new DbContextOptionsBuilder<LuminaDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var id = Guid.NewGuid();
+        var section = string.Join(' ', Enumerable.Repeat("meaningful retrieval passage", 2500));
+        await using (var seed = new LuminaDbContext(options))
+        {
+            seed.Documents.Add(new Document
+            {
+                Id = id, UserId = Guid.NewGuid(), FileName = "notes.md", ContentVersion = 1,
+                Content = "# Biology\n\n## Roots\n" + section, ContentJson = ""
+            });
+            await seed.SaveChangesAsync();
+        }
+        await using var db = new LuminaDbContext(options);
+        var vectors = new RecordingVectorStore();
+        var service = new DocumentIndexService(db, new DocumentChunker(new ConfigurationBuilder().Build()), new FakeEmbeddings(), vectors,
+            NullLogger<DocumentIndexService>.Instance, new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Rag:FullDocumentMaxTokens"] = "100" }).Build());
+
+        await service.IndexAsync(id, default);
+
+        Assert.NotEmpty(vectors.Upserted);
+        Assert.All(vectors.Upserted, point => Assert.Equal(".md", point.Chunk.Format));
+        Assert.Contains(vectors.Upserted, point => point.Chunk.HeadingPath?.SequenceEqual(["Biology", "Roots"]) == true);
+        Assert.Equal("format-aware-v3", (await db.Documents.SingleAsync(d => d.Id == id)).ChunkingVersion);
+    }
+
     private sealed class FakeEmbeddings : IEmbeddingService
     {
         public string Model => "embedding-test"; public int? Dimensions => 3;

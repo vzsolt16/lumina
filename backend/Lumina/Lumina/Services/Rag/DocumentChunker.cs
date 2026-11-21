@@ -4,11 +4,12 @@ using System.Text.Json.Nodes;
 namespace Lumina.Services.Rag;
 
 public sealed record DocumentChunk(int Index, string Text, string? Heading, IReadOnlyList<string> NodeIds,
-    IReadOnlyList<string>? HeadingPath = null, int StartBlockIndex = 0, int EndBlockIndex = 0);
+    IReadOnlyList<string>? HeadingPath = null, int StartBlockIndex = 0, int EndBlockIndex = 0, string? Format = null);
 
 public interface IDocumentChunker
 {
     IReadOnlyList<DocumentChunk> Chunk(string contentJson);
+    IReadOnlyList<DocumentChunk> ChunkSourceText(string source, string extension);
 }
 
 /// <summary>
@@ -18,7 +19,7 @@ public interface IDocumentChunker
 /// </summary>
 public sealed class DocumentChunker(IConfiguration configuration) : IDocumentChunker
 {
-    public const string Version = "blocks-v2";
+    public const string Version = "format-aware-v3";
     private readonly int _chunkTokens = Math.Clamp(configuration.GetValue("Rag:ChunkTokens", 400), 100, 1000);
     private readonly int _overlapTokens = Math.Clamp(configuration.GetValue("Rag:OverlapTokens", 60), 0, 250);
 
@@ -78,6 +79,64 @@ public sealed class DocumentChunker(IConfiguration configuration) : IDocumentChu
                         if (overlap.Length > 0) { currentText.Append(overlap).AppendLine(); currentTokens = CountTokens(overlap); currentIds.AddRange(completedIds); }
                     }
                 }
+            }
+        }
+        Flush();
+        return output;
+    }
+
+    /// <summary>Chunks canonical source text without converting it to ProseMirror.</summary>
+    public IReadOnlyList<DocumentChunk> ChunkSourceText(string source, string extension)
+    {
+        if (string.IsNullOrEmpty(source)) return [];
+        var lines = source.Split('\n');
+        var output = new List<DocumentChunk>();
+        var headingStack = new List<(int Level, string Title)>();
+        var current = new StringBuilder();
+        var currentStart = 0;
+        var currentEnd = 0;
+        string? currentHeading = null;
+        IReadOnlyList<string> currentPath = [];
+        void Flush()
+        {
+            if (current.Length == 0) return;
+            output.Add(new(output.Count, current.ToString(), currentHeading, [], currentPath, currentStart, currentEnd, extension.ToLowerInvariant()));
+            current.Clear();
+        }
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(line, @"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$");
+                if (match.Success)
+                {
+                    Flush();
+                    var level = match.Groups[1].Length;
+                    while (headingStack.Count > 0 && headingStack[^1].Level >= level) headingStack.RemoveAt(headingStack.Count - 1);
+                    headingStack.Add((level, match.Groups[2].Value));
+                }
+            }
+
+            var path = headingStack.Select(h => h.Title).ToArray();
+            var pieces = SplitOversized(line, _chunkTokens);
+            foreach (var piece in pieces)
+            {
+                var nextTokens = CountTokens(piece);
+                if (current.Length > 0 && !currentPath.SequenceEqual(path))
+                    Flush();
+                if (current.Length > 0 && CountTokens(current.ToString()) + nextTokens > _chunkTokens)
+                    Flush();
+                if (current.Length == 0)
+                {
+                    currentStart = i;
+                    currentHeading = path.LastOrDefault();
+                    currentPath = path;
+                }
+                if (current.Length > 0) current.Append('\n');
+                current.Append(piece);
+                currentEnd = i;
             }
         }
         Flush();

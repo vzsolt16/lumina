@@ -7,13 +7,7 @@ internal static class DocumentValidation
     internal const long MaxFileSize = 2 * 1024 * 1024;
     internal const int MaxFileNameLength = 255;
 
-    internal static readonly string[] SupportedExtensions =
-    [
-        ".txt", ".md", ".pdf", ".docx", ".cs", ".js", ".jsx", ".ts", ".tsx", ".py",
-        ".java", ".html", ".css", ".json", ".xml", ".yaml", ".yml", ".sql", ".sh",
-        ".bash", ".dockerfile", ".tf", ".go", ".rs", ".toml", ".ini", ".csv", ".log",
-        ".graphql", ".vue"
-    ];
+    internal static readonly string[] SupportedExtensions = DocumentFormatDescriptor.SupportedExtensions;
 
     internal static string GetSafeFileName(string fileName)
     {
@@ -38,7 +32,7 @@ internal static class DocumentValidation
                 StringComparison.OrdinalIgnoreCase)
             ? ".dockerfile"
             : Path.GetExtension(fileName).ToLowerInvariant();
-        if (!SupportedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        if (!DocumentFormatDescriptor.RecognizedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("This file type is not supported.");
         }
@@ -58,7 +52,11 @@ internal static class DocumentValidation
         }
 
         _ = GetSafeFileName(file.FileName);
-        _ = GetExtension(file.FileName);
+        var extension = GetExtension(file.FileName);
+        if (!SupportedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("This file type is not supported for upload.");
+        }
     }
 
     internal static void ValidateEditableContent(string content)

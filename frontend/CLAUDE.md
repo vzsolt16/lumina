@@ -62,6 +62,17 @@ Chat uses the same connection setup (`HubConnectionBuilder`, WebSockets-only, `a
 #### AI edit proposals (agentic edits from chat)
 The model can propose document edits from chat, but never writes directly: the backend detects a marker block in the model's reply, validates the quoted passage against the document, and streams a `proposal` event — `{ messageId, target, replacement, status }`. `ChatTab` renders it as a diff card (`.chat-proposal`) with Apply/Reject. Apply calls `POST .../messages/:messageId/proposal/apply`, which does the replacement server-side (409 if the document changed since, or the proposal was already resolved) and returns the updated document — `ChatTab` bubbles that up via `onDocUpdated` from the Outlet context so the Content tab and header stay in sync. Reject just marks the proposal. Proposals persist on the message (`message.proposal` in history), so reloads render them with their status.
 
+### Format-aware content editing
+
+`GET /api/documents/:id` returns a `capabilities` descriptor. `ContentTab.jsx`
+uses a whitespace-preserving textarea for canonical source text, a safe Markdown
+preview for `.md`, and the existing Tiptap editor for structured/extracted
+content. Text autosaves send `content`; rich-text autosaves send `contentJson`,
+both with `expectedContentVersion`. Current editable content and immutable
+original uploads have separate download actions. PDF/DOCX notices clarify that
+edits affect extracted content only. `src/constants/documentFormats.js` mirrors
+the backend curated upload set.
+
 ### Backend data contracts the frontend relies on
 - `GET /api/documents` → `[{ id, fileName, uploadedAt }]`; `GET /api/documents/:id` → document detail.
 - `GET /api/documents/:id/flashcards` → `[{ question, answer }]` (flat list — see caveats).

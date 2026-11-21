@@ -11,16 +11,20 @@ internal static class DocumentContentMutation
         IDocumentContentConverter contentConverter)
     {
         DocumentValidation.ValidateEditableContent(content);
+        if (DocumentFormatDescriptor.UsesCanonicalSourceText(document.FileName, document.ContentJson))
+            DocumentFormatDescriptor.ValidateSourceTextSyntax(document.FileName, content);
         if (string.Equals(document.Content, content, StringComparison.Ordinal))
         {
             return false;
         }
 
         document.Content = content;
-        // Raw-text edits are a legacy compatibility path. They intentionally
-        // rebuild unformatted paragraphs; structured editor operations preserve
-        // untouched node attributes and marks in a later stage.
-        document.ContentJson = contentConverter.CreateFromPlainText(content);
+        if (!DocumentFormatDescriptor.UsesCanonicalSourceText(document.FileName, document.ContentJson))
+        {
+            // Legacy rich-text edits submitted as plain text are still converted
+            // to paragraphs. Source formats keep Content as their canonical text.
+            document.ContentJson = contentConverter.CreateFromPlainText(content);
+        }
         document.ContentSize = Encoding.UTF8.GetByteCount(content);
         document.ContentVersion++;
         return true;

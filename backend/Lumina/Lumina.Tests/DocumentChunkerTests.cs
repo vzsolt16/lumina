@@ -61,4 +61,23 @@ public sealed class DocumentChunkerTests
         Assert.Contains("h2", chunk.NodeIds);
         Assert.Contains("p", chunk.NodeIds);
     }
+
+    [Fact]
+    public void ChunksMarkdownSourceWithoutConvertingItsCanonicalSyntax()
+    {
+        var source = "# Plants\n\n- Roots absorb water.\n## Leaves\n\n**Leaves** use sunlight.";
+        var chunker = (DocumentChunker)Create();
+
+        var chunks = chunker.ChunkSourceText(source, ".md");
+
+        Assert.Equal(2, chunks.Count);
+        Assert.Contains("- Roots absorb water.", chunks[0].Text);
+        Assert.Equal("Plants", chunks[0].Heading);
+        Assert.Equal(new[] { "Plants", "Leaves" }, chunks[1].HeadingPath);
+        Assert.Equal(0, chunks[0].StartBlockIndex);
+        Assert.Equal(5, chunks[1].EndBlockIndex);
+        var reconstructed = string.Join("\n", chunks.Select(chunk => chunk.Text));
+        Assert.Contains("# Plants", reconstructed);
+        Assert.Contains("**Leaves** use sunlight.", reconstructed);
+    }
 }

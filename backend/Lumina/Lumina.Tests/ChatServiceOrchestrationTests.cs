@@ -79,6 +79,37 @@ public sealed class ChatServiceOrchestrationTests
     }
 
     [Fact]
+    public async Task SourceTextEditUsesExactTargetAndApprovalWithoutRewritingOtherWhitespace()
+    {
+        var args = JsonSerializer.Serialize(new
+        {
+            summary = "Update the return value",
+            changes = new[] { new { action = "replace_text", target = "return 1", replacement = "return 2" } }
+        });
+        await using var provider = CreateProvider(new ScriptedAiService([[new AiChatDelta(null, [Call("propose_document_edit", args)])]]));
+        var original = "def run():\r\n    return 1\r\n";
+        var (documentId, conversationId, userId) = await Seed(provider, original, sourceText: true);
+        Guid messageId;
+        using (var scope = provider.CreateScope())
+        {
+            var chat = scope.ServiceProvider.GetRequiredService<IChatService>();
+            var events = await Collect(chat.StreamAnswerAsync(conversationId, userId, "Change the return value", null));
+            var proposal = Assert.Single(events, item => item.Type == "proposal").Proposal!;
+            Assert.Equal("text", proposal.Kind);
+            Assert.Contains("return 1", proposal.Replacement);
+            Assert.Equal(original, await scope.ServiceProvider.GetRequiredService<LuminaDbContext>().Documents
+                .Where(d => d.Id == documentId).Select(d => d.Content).SingleAsync());
+            messageId = proposal.MessageId;
+            await chat.ApplyProposalAsync(documentId, conversationId, messageId, userId);
+        }
+        using var verify = provider.CreateScope();
+        var stored = await verify.ServiceProvider.GetRequiredService<LuminaDbContext>().Documents.SingleAsync(d => d.Id == documentId);
+        Assert.Equal("def run():\r\n    return 2\r\n", stored.Content);
+        Assert.Equal(string.Empty, stored.ContentJson);
+        Assert.Equal(2, stored.ContentVersion);
+    }
+
+    [Fact]
     public async Task ProviderFailureDoesNotPersistPartialExchange()
     {
         var ai = new ScriptedAiService([], fail: true);
@@ -163,7 +194,7 @@ public sealed class ChatServiceOrchestrationTests
         return services.BuildServiceProvider();
     }
 
-    private static async Task<(Guid DocumentId, Guid ConversationId, Guid UserId)> Seed(IServiceProvider provider, string content = "Original content")
+    private static async Task<(Guid DocumentId, Guid ConversationId, Guid UserId)> Seed(IServiceProvider provider, string content = "Original content", bool sourceText = false)
     {
         using var scope = provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LuminaDbContext>();
@@ -175,9 +206,9 @@ public sealed class ChatServiceOrchestrationTests
         {
             Id = documentId,
             UserId = userId,
-            FileName = "Notes.md",
+            FileName = sourceText ? "source.py" : "Notes.md",
             Content = content,
-            ContentJson = $"{{\"type\":\"doc\",\"content\":[{{\"type\":\"paragraph\",\"attrs\":{{\"id\":\"{TargetNodeId}\"}},\"content\":[{{\"type\":\"text\",\"text\":{JsonSerializer.Serialize(content)}}}]}}]}}",
+            ContentJson = sourceText ? string.Empty : $"{{\"type\":\"doc\",\"content\":[{{\"type\":\"paragraph\",\"attrs\":{{\"id\":\"{TargetNodeId}\"}},\"content\":[{{\"type\":\"text\",\"text\":{JsonSerializer.Serialize(content)}}}]}}]}}",
             ContentVersion = 1
         });
         db.ChatConversations.Add(new ChatConversation

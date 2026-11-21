@@ -9,6 +9,70 @@ namespace Lumina.Tests;
 public class DocumentEditorServiceTests
 {
     [Fact]
+    public async Task AppliesTextRangePreservingAllUntouchedSourceAndLineEndings()
+    {
+        await using var db = CreateDb();
+        var ownerId = Guid.NewGuid();
+        var document = new Document
+        {
+            Id = Guid.NewGuid(), UserId = ownerId, FileName = "sample.py",
+            Content = "first\r\nsecond\r\nthird", ContentJson = "", ContentVersion = 4,
+            ContentType = "text/plain", UploadedAt = DateTime.UtcNow
+        };
+        db.Documents.Add(document);
+        await db.SaveChangesAsync();
+        var service = new DocumentEditorService(db, new ProseMirrorDocumentConverter());
+
+        var updated = await service.ApplyTextOperationsAsync(document.Id, ownerId, 4,
+            [new TextDocumentOperation(7, "second", "changed")]);
+
+        Assert.Equal("first\r\nchanged\r\nthird", updated.Content);
+        Assert.Equal(string.Empty, updated.ContentJson);
+        Assert.Equal(5, updated.ContentVersion);
+    }
+
+    [Fact]
+    public async Task RejectsStaleOrChangedTextRanges()
+    {
+        await using var db = CreateDb();
+        var ownerId = Guid.NewGuid();
+        var document = new Document
+        {
+            Id = Guid.NewGuid(), UserId = ownerId, FileName = "sample.js",
+            Content = "const value = 1;", ContentJson = "", ContentVersion = 2,
+            ContentType = "text/plain", UploadedAt = DateTime.UtcNow
+        };
+        db.Documents.Add(document);
+        await db.SaveChangesAsync();
+        var service = new DocumentEditorService(db, new ProseMirrorDocumentConverter());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ApplyTextOperationsAsync(
+            document.Id, ownerId, 1, [new TextDocumentOperation(0, "const", "let")]));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ApplyTextOperationsAsync(
+            document.Id, ownerId, 2, [new TextDocumentOperation(0, "var", "let")]));
+    }
+
+    [Fact]
+    public async Task RejectsMalformedJsonSourceProposal()
+    {
+        await using var db = CreateDb();
+        var ownerId = Guid.NewGuid();
+        var document = new Document
+        {
+            Id = Guid.NewGuid(), UserId = ownerId, FileName = "settings.json",
+            Content = "{\"enabled\": true}", ContentJson = "", ContentVersion = 1,
+            ContentType = "application/json", UploadedAt = DateTime.UtcNow
+        };
+        db.Documents.Add(document);
+        await db.SaveChangesAsync();
+        var service = new DocumentEditorService(db, new ProseMirrorDocumentConverter());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ApplyTextOperationsAsync(
+            document.Id, ownerId, 1, [new TextDocumentOperation(12, "true", "not-json")]));
+        Assert.Equal("{\"enabled\": true}", document.Content);
+    }
+
+    [Fact]
     public async Task AppliesMultipleValidatedOperationsAtomicallyAndIncrementsVersionOnce()
     {
         await using var db = CreateDb();

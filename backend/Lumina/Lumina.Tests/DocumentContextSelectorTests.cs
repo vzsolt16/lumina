@@ -46,6 +46,7 @@ public sealed class DocumentContextSelectorTests
         await using var db = CreateDb();
         var userId = Guid.NewGuid(); var document = NewDocument(userId, new string('x', 20000), 2);
         document.IndexingStatus = "Indexed"; document.IndexedContentVersion = 2; document.ActiveIndexGeneration = "active";
+        document.ChunkingVersion = DocumentChunker.Version;
         db.Documents.Add(document); await db.SaveChangesAsync();
         var vectors = new FakeVectors { Result = [new VectorMatch(document.Id, 2, "active", new DocumentChunk(0, "relevant passage", "Topic", ["node-1"]), .5f)] };
         using var provider = CreateProvider(db);
@@ -56,6 +57,59 @@ public sealed class DocumentContextSelectorTests
         Assert.Equal(document.Id, result.Sources.Single().DocumentId);
         Assert.Equal("Topic", result.Sources.Single().Heading);
         Assert.Contains("relevant passage", result.Text);
+    }
+
+    [Fact]
+    public async Task FullContextPreservesIndexForLaterSemanticRetrieval()
+    {
+        await using var db = CreateDb();
+        var userId = Guid.NewGuid(); var document = NewDocument(userId, new string('x', 20000), 2);
+        document.IndexingStatus = "Indexed"; document.IndexedContentVersion = 2;
+        document.ActiveIndexGeneration = "active"; document.ChunkingVersion = DocumentChunker.Version;
+        db.Documents.Add(document); await db.SaveChangesAsync();
+        var vectors = new FakeVectors
+        {
+            Result = [new VectorMatch(document.Id, 2, "active", new DocumentChunk(0, "relevant passage", "Topic", ["node-1"]), .5f)]
+        };
+        using var provider = CreateProvider(db);
+        var selector = CreateSelector(provider.GetRequiredService<IServiceScopeFactory>(), new FakeEmbeddings(), vectors, 1500);
+
+        var full = await selector.SelectAsync(document.Id, userId, "Question", [], default, evidenceBudgetTokens: 10000);
+        var afterFull = await db.Documents.AsNoTracking().SingleAsync(d => d.Id == document.Id);
+
+        Assert.Equal("full", full.Mode);
+        Assert.Equal("Indexed", afterFull.IndexingStatus);
+        Assert.Equal(2, afterFull.IndexedContentVersion);
+        Assert.Equal("active", afterFull.ActiveIndexGeneration);
+        Assert.Equal(0, vectors.DeleteDocumentCalls);
+
+        var semantic = await selector.SelectAsync(document.Id, userId, "Question", [], default, evidenceBudgetTokens: 1500);
+
+        Assert.Equal("rag", semantic.Mode);
+        Assert.Equal(1, vectors.SearchCalls);
+        Assert.Equal("active", vectors.LastGeneration);
+        Assert.Contains("relevant passage", semantic.Text);
+    }
+
+    [Fact]
+    public async Task FullContextLeavesUnindexedDocumentStateUntouched()
+    {
+        await using var db = CreateDb();
+        var userId = Guid.NewGuid(); var document = NewDocument(userId, "A document that fits", 1);
+        document.IndexingStatus = "NotIndexed";
+        db.Documents.Add(document); await db.SaveChangesAsync();
+        var vectors = new FakeVectors();
+        using var provider = CreateProvider(db);
+
+        var result = await CreateSelector(provider.GetRequiredService<IServiceScopeFactory>(), new FakeEmbeddings(), vectors, 8000)
+            .SelectAsync(document.Id, userId, "Question", [], default);
+
+        var after = await db.Documents.AsNoTracking().SingleAsync(d => d.Id == document.Id);
+        Assert.Equal("full", result.Mode);
+        Assert.Equal("NotIndexed", after.IndexingStatus);
+        Assert.Null(after.ActiveIndexGeneration);
+        Assert.Equal(0, vectors.DeleteDocumentCalls);
+        Assert.Equal(0, vectors.SearchCalls);
     }
 
     private static LuminaDbContext CreateDb() => new(new DbContextOptionsBuilder<LuminaDbContext>()
@@ -78,12 +132,13 @@ public sealed class DocumentContextSelectorTests
     }
     private sealed class FakeVectors : IVectorStore
     {
-        public int SearchCalls { get; private set; } public Guid? LastUserId { get; private set; }
+        public int SearchCalls { get; private set; } public int DeleteDocumentCalls { get; private set; }
+        public Guid? LastUserId { get; private set; } public string? LastGeneration { get; private set; }
         public IReadOnlyList<VectorMatch> Result { get; init; } = [];
         public Task EnsureCollectionAsync(int dimensions, CancellationToken ct) => Task.CompletedTask;
         public Task UpsertAsync(IReadOnlyList<VectorRecord> points, CancellationToken ct) => Task.CompletedTask;
-        public Task<IReadOnlyList<VectorMatch>> SearchAsync(float[] vector, Guid userId, Guid? documentId, string generation, int limit, CancellationToken ct) { SearchCalls++; LastUserId = userId; return Task.FromResult(Result); }
-        public Task DeleteDocumentAsync(Guid documentId, CancellationToken ct) => Task.CompletedTask;
+        public Task<IReadOnlyList<VectorMatch>> SearchAsync(float[] vector, Guid userId, Guid? documentId, string generation, int limit, CancellationToken ct) { SearchCalls++; LastUserId = userId; LastGeneration = generation; return Task.FromResult(Result); }
+        public Task DeleteDocumentAsync(Guid documentId, CancellationToken ct) { DeleteDocumentCalls++; return Task.CompletedTask; }
         public Task DeleteGenerationAsync(Guid documentId, string generation, CancellationToken ct) => Task.CompletedTask;
     }
 }

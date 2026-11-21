@@ -1,4 +1,5 @@
 using Lumina.Data;
+using Lumina.Services.Documents;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lumina.Services.Rag;
@@ -32,10 +33,18 @@ public sealed class DocumentIndexService(LuminaDbContext db, IDocumentChunker ch
                 logger.LogInformation("Skipped vector indexing for small document {DocumentId} version {Version}", documentId, version);
                 return;
             }
-            var chunks = chunker.Chunk(document.ContentJson);
+            var extension = Path.GetExtension(document.FileName).ToLowerInvariant();
+            var chunks = DocumentFormatDescriptor.UsesCanonicalSourceText(document.FileName, document.ContentJson)
+                ? chunker.ChunkSourceText(document.Content, extension)
+                : chunker.Chunk(document.ContentJson);
+            if (!DocumentFormatDescriptor.UsesCanonicalSourceText(document.FileName, document.ContentJson))
+                chunks = chunks.Select(c => c with { Format = extension }).ToArray();
             if (chunks.Count > 0)
             {
-                var vectorsOut = await embeddings.EmbedDocumentsAsync(chunks.Select(c => c.Text).ToArray(), document.FileName, ct);
+                var vectorsOut = await embeddings.EmbedDocumentsAsync(chunks.Select(c =>
+                    c.HeadingPath is { Count: > 0 }
+                        ? $"{string.Join(" > ", c.HeadingPath)}\n{c.Text}"
+                        : c.Text).ToArray(), document.FileName, ct);
                 await vectors.EnsureCollectionAsync(vectorsOut[0].Length, ct);
                 var records = chunks.Select((c, i) => new VectorRecord(Guid.NewGuid(), vectorsOut[i], document.UserId, document.Id, version, generation, c, embeddings.Model)).ToArray();
                 await vectors.UpsertAsync(records, ct);

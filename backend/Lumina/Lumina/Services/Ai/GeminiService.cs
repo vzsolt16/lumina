@@ -26,7 +26,15 @@ public sealed class GeminiService : IAiService
     public async Task<int?> CountInputTokensAsync(IReadOnlyList<AiMessage> messages, IReadOnlyList<AiTool> tools,
         CancellationToken cancellationToken = default, string? modelId = null)
     {
-        var body = CreateRequestBody(messages, tools, 4000);
+        // countTokens accepts a GenerateContentRequest inside this wrapper. Its
+        // top-level request only accepts `contents`, so sending the generation
+        // fields directly is rejected as an invalid payload.
+        var model = _catalog.Resolve(modelId);
+        var body = new JsonObject
+        {
+            ["generateContentRequest"] = CreateRequestBody(messages, tools, 4000)
+        };
+        body["generateContentRequest"]!["model"] = $"models/{model.ApiModel}";
         using var response = await SendAsync("countTokens", modelId, body, cancellationToken);
         var json = await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken: cancellationToken)
             ?? throw new InvalidOperationException("Gemini returned an empty token-count response.");

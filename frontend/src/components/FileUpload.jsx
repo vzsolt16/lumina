@@ -8,6 +8,7 @@ import {
 
 function hasAllowedExt(name) {
   const lower = name.toLowerCase()
+  if (lower === 'dockerfile') return true
   return SUPPORTED_DOCUMENT_EXTENSIONS.some((ext) => lower.endsWith(ext))
 }
 

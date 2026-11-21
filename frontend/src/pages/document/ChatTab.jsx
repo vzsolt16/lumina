@@ -653,6 +653,8 @@ export default function ChatTab() {
                           <span>
                             {m.proposal.kind === 'insert'
                               ? '// PROPOSED_ADDITION'
+                              : m.proposal.kind === 'text'
+                                ? '// SOURCE_TEXT_CHANGE'
                               : '// PROPOSED_EDIT'}
                           </span>
                           <span className={`chat-proposal-status ${m.proposal.status}`}>
@@ -668,6 +670,12 @@ export default function ChatTab() {
                             {m.proposal.replacement && (
                               <pre className="chat-proposal-block ctx">{m.proposal.replacement}</pre>
                             )}
+                          </>
+                        ) : m.proposal.kind === 'text' ? (
+                          <>
+                            <div className="chat-proposal-caption">// REVIEW SOURCE CHANGE</div>
+                            {m.proposal.target && <pre className="chat-proposal-block ctx">{m.proposal.target}</pre>}
+                            {m.proposal.replacement && <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>}
                           </>
                         ) : m.proposal.kind === 'insert' ? (
                           // An insertion: the anchor (if any) is context, not a

@@ -140,6 +140,30 @@ export function getDocument(id) {
   return request(`/api/documents/${id}`)
 }
 
+/** Download the current editable representation (which may be extracted text for PDF/DOCX). */
+export async function downloadCurrentDocument(id) {
+  return downloadDocumentBlob(`/api/documents/${id}/content`)
+}
+
+/** Download the immutable originally uploaded file. */
+export async function downloadOriginalDocument(id) {
+  return downloadDocumentBlob(`/api/documents/${id}/original`)
+}
+
+async function downloadDocumentBlob(path) {
+  const token = getAccessToken()
+  const response = await fetch(path, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
+  })
+  if (!response.ok) throw new Error(`Unable to download document (${response.status})`)
+  const blob = await response.blob()
+  const disposition = response.headers.get('content-disposition') || ''
+  const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i)
+  const name = decodeURIComponent(match?.[1] || match?.[2] || 'document.txt')
+  return { blob, fileName: name }
+}
+
 /** Delete a document (and its flashcards, quizzes and chat) by id. */
 export function deleteDocument(id) {
   return request(`/api/documents/${id}`, { method: 'DELETE' })

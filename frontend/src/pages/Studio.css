@@ -613,6 +613,34 @@
   color: var(--text-mid);
 }
 
+.doc-source-editor {
+  display: block;
+  width: 100%;
+  min-height: 55vh;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid var(--border-t);
+  background: rgba(6, 34, 46, 0.6);
+  color: var(--text-dark);
+  font-family: var(--font-tech);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  tab-size: 4;
+  white-space: pre;
+  overflow: auto;
+}
+
+.doc-source-editor:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.doc-markdown-preview {
+  color: var(--text-mid);
+  line-height: 1.7;
+}
+
 .doc-content-markdown {
   font-family: var(--font-tech);
   font-size: 0.9rem;

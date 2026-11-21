@@ -76,7 +76,9 @@ public sealed class PlainTextContentExtractor : IDocumentContentExtractor
             using var reader = new StreamReader(
                 content,
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
-                detectEncodingFromByteOrderMarks: true,
+                // Do not strip a UTF-8 BOM from canonical source text. Its decoded
+                // U+FEFF remains in Content and is reproduced by current-content export.
+                detectEncodingFromByteOrderMarks: false,
                 leaveOpen: true);
             var text = await reader.ReadToEndAsync(cancellationToken);
             if (text.Contains('\0'))

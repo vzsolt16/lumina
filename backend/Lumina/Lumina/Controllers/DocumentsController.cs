@@ -5,6 +5,8 @@ using Lumina.Services.Documents;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Lumina.Services.Rag;
+using System.Text;
+using System.IO;
 
 namespace Lumina.Controllers;
 
@@ -70,6 +72,29 @@ public class DocumentsController : ControllerBase
 
         return File(original.Content, original.ContentType, original.FileName);
     }
+
+    [HttpGet("{id:guid}/content")]
+    public async Task<IActionResult> DownloadCurrentContent(Guid id, CancellationToken cancellationToken)
+    {
+        var document = await _documentService.GetByIdAsync(id, User.GetUserId(), cancellationToken);
+        if (document is null) return NotFound();
+
+        var isExtracted = document.Capabilities.EditsAffectExtractedContentOnly;
+        var fileName = isExtracted
+            ? Path.GetFileNameWithoutExtension(document.FileName) + ".extracted.txt"
+            : document.FileName;
+        var contentType = isExtracted ? "text/plain; charset=utf-8" : GetTextContentType(Path.GetExtension(fileName));
+        return File(Encoding.UTF8.GetBytes(document.Content), contentType, fileName);
+    }
+
+    private static string GetTextContentType(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".json" => "application/json; charset=utf-8",
+        ".xml" => "application/xml; charset=utf-8",
+        ".html" => "text/html; charset=utf-8",
+        ".css" => "text/css; charset=utf-8",
+        _ => "text/plain; charset=utf-8"
+    };
 
     [HttpGet]
     public async Task<ActionResult<List<DocumentSummaryResponse>>> GetAll()

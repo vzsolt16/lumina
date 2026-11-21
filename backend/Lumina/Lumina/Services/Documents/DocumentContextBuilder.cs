@@ -19,6 +19,17 @@ public sealed class DocumentContextBuilder : IDocumentContextBuilder
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (DocumentFormatDescriptor.UsesCanonicalSourceText(document.FileName, document.ContentJson))
+        {
+            var source = contextType switch
+            {
+                DocumentContextType.PlainText or DocumentContextType.TextWithIds => document.Content,
+                DocumentContextType.StructureOutline => BuildSourceOutline(document),
+                DocumentContextType.StructuredJson => throw new InvalidOperationException("Source-text documents do not have a ProseMirror JSON representation."),
+                _ => throw new ArgumentOutOfRangeException(nameof(contextType))
+            };
+            return Task.FromResult(source);
+        }
         var json = _converter.Normalize(document.ContentJson);
 
         var result = contextType switch
@@ -31,6 +42,20 @@ public sealed class DocumentContextBuilder : IDocumentContextBuilder
         };
 
         return Task.FromResult(result);
+    }
+
+    private static string BuildSourceOutline(Document document)
+    {
+        var lines = document.Content.Split('\n');
+        if (!string.Equals(Path.GetExtension(document.FileName), ".md", StringComparison.OrdinalIgnoreCase))
+            return $"Source text: {document.FileName}\nLine count: {lines.Length}";
+        var builder = new StringBuilder();
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(lines[i], @"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$");
+            if (match.Success) builder.Append(' ', (match.Groups[1].Length - 1) * 2).Append("- line ").Append(i).Append(": ").AppendLine(match.Groups[2].Value);
+        }
+        return builder.Length == 0 ? $"Markdown source: {document.FileName}\nNo heading lines. Total lines: {lines.Length}" : builder.ToString().TrimEnd();
     }
 
     private static string BuildTextWithIds(string contentJson)

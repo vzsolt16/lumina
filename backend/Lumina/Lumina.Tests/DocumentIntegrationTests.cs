@@ -138,15 +138,71 @@ public class DocumentIntegrationTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task Upload_SourceCode_ExtractsAsText()
     {
-        var doc = await UploadAsync("sample.cs", "Console.WriteLine(\"hello\");");
+        const string source = "class Demo\r\n{\r\n    static void Main() { }\r\n}";
+        var doc = await UploadAsync("sample.cs", source);
 
         var response = await _client.GetFromJsonAsync<DocumentDetailResponse>(
             $"/api/documents/{doc.Id}");
 
-        Assert.Equal("Console.WriteLine(\"hello\");", response!.Content);
-        Assert.Contains("\"type\":\"doc\"", response.ContentJson);
-        Assert.Contains("\"id\":\"node-", response.ContentJson);
+        Assert.Equal(source, response!.Content);
+        Assert.Equal(string.Empty, response.ContentJson);
+        Assert.Equal("sourceText", response.Capabilities.Representation);
         Assert.Equal(1, response.ContentVersion);
+    }
+
+    [Fact]
+    public async Task Upload_Utf8BomSourcePreservesBomAndExactLineEndings()
+    {
+        var source = "\uFEFFfirst\r\nsecond";
+        var doc = await UploadAsync("source.ts", Encoding.UTF8.GetBytes(source));
+
+        var current = await _client.GetFromJsonAsync<DocumentDetailResponse>($"/api/documents/{doc.Id}");
+        var exported = await _client.GetByteArrayAsync($"/api/documents/{doc.Id}/content");
+
+        Assert.Equal(source, current!.Content);
+        Assert.Equal(Encoding.UTF8.GetBytes(source), exported);
+    }
+
+    [Fact]
+    public async Task UploadAndEdit_MarkdownKeepsRawSyntaxCanonical()
+    {
+        const string markdown = "# Heading\r\n\r\n- item\r\n\r\n```cs\r\nvar x = 1;\r\n```";
+        var doc = await UploadAsync("notes.md", markdown);
+
+        var response = await _client.GetFromJsonAsync<DocumentDetailResponse>($"/api/documents/{doc.Id}");
+
+        Assert.Equal(markdown, response!.Content);
+        Assert.Equal(string.Empty, response.ContentJson);
+        Assert.Equal("sourceText", response.Capabilities.Representation);
+        Assert.Equal("# Heading\r\n\r\n- changed\r\n\r\n```cs\r\nvar x = 1;\r\n```", await PatchSource(doc.Id,
+            "# Heading\r\n\r\n- changed\r\n\r\n```cs\r\nvar x = 1;\r\n```", response.ContentVersion));
+    }
+
+    private async Task<string> PatchSource(Guid documentId, string content, int version)
+    {
+        var update = await _client.PatchAsJsonAsync($"/api/documents/{documentId}", new { Content = content, ExpectedContentVersion = version });
+        Assert.Equal(System.Net.HttpStatusCode.OK, update.StatusCode);
+        var result = await update.Content.ReadFromJsonAsync<DocumentDetailResponse>();
+        return result!.Content;
+    }
+
+    [Fact]
+    public async Task DownloadCurrentSourceContent_PreservesLineEndingsAndOriginalDownloadStaysImmutable()
+    {
+        const string source = "first\r\nsecond\r\n";
+        var doc = await UploadAsync("notes.md", source);
+        await _client.PatchAsJsonAsync($"/api/documents/{doc.Id}", new
+        {
+            Content = "first\r\nchanged\r\n",
+            ExpectedContentVersion = 1
+        });
+
+        var current = await _client.GetAsync($"/api/documents/{doc.Id}/content");
+        var original = await _client.GetAsync($"/api/documents/{doc.Id}/original");
+
+        Assert.Equal("first\r\nchanged\r\n", await current.Content.ReadAsStringAsync());
+        Assert.Equal(source, await original.Content.ReadAsStringAsync());
+        Assert.Equal("notes.md", current.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
     }
 
     [Fact]
@@ -197,6 +253,30 @@ public class DocumentIntegrationTests : IClassFixture<IntegrationTestFactory>
             $"/api/documents/{doc.Id}");
 
         Assert.Contains("Hello PDF", response!.Content);
+    }
+
+    [Fact]
+    public async Task EditingPdfExtractionDoesNotChangeOriginalAndExportsTextOnly()
+    {
+        var pdfBytes = CreatePdf("Hello PDF");
+        var doc = await UploadAsync("sample.pdf", pdfBytes);
+        var before = await _client.GetByteArrayAsync($"/api/documents/{doc.Id}/original");
+        var detail = await _client.GetFromJsonAsync<DocumentDetailResponse>($"/api/documents/{doc.Id}");
+        Assert.False(detail!.Capabilities.OriginalFormatReconstruction);
+        Assert.True(detail.Capabilities.EditsAffectExtractedContentOnly);
+
+        var update = await _client.PatchAsJsonAsync($"/api/documents/{doc.Id}", new
+        {
+            Content = "Edited extracted text",
+            ExpectedContentVersion = detail.ContentVersion
+        });
+        var current = await _client.GetAsync($"/api/documents/{doc.Id}/content");
+        var after = await _client.GetByteArrayAsync($"/api/documents/{doc.Id}/original");
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, update.StatusCode);
+        Assert.Equal("Edited extracted text", await current.Content.ReadAsStringAsync());
+        Assert.Equal("sample.extracted.txt", current.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        Assert.Equal(before, after);
     }
 
     [Fact]

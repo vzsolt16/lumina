@@ -30,7 +30,8 @@ public sealed class DocumentIndexScheduler(IServiceScopeFactory scopes, IConfigu
         var ids = await db.Documents.Where(d => d.IndexingStatus == "Pending"
             || d.IndexingStatus == "Indexing"
             || d.IndexingStatus == "NotIndexed"
-            || d.IndexedContentVersion != d.ContentVersion).Select(d => d.Id).ToListAsync(ct);
+            || d.IndexedContentVersion != d.ContentVersion
+            || d.ChunkingVersion != DocumentChunker.Version).Select(d => d.Id).ToListAsync(ct);
         foreach (var id in ids) Schedule(id);
     }
 

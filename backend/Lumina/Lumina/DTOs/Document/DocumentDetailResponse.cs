@@ -19,4 +19,6 @@ public class DocumentDetailResponse
     public string Content { get; set; } = "";
 
     public string ContentJson { get; set; } = "";
+
+    public DocumentFormatCapabilities Capabilities { get; set; } = new();
 }

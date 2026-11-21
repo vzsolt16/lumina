@@ -6,7 +6,7 @@ with documents in real time.
 
 ## Features
 
-- Upload TXT, Markdown, PDF, and DOCX files
+- Upload plain text, Markdown, common source/config text, PDF, and DOCX files
 - AI-generated flashcards and quizzes
 - Conversational document chat with SignalR streaming
 - Select between configured Gemini models per conversation
@@ -179,6 +179,29 @@ does not add `-` characters to paragraph text to imitate bullets.
 
 Document renaming is an immediate operation. Other content changes remain
 reviewable proposals and are never applied by the AI tool itself.
+
+## Document format capabilities
+
+Lumina keeps the original upload immutable and edits a separate canonical
+representation. Plain text, Markdown, and supported source/config files use raw
+UTF-8 source text as canonical content; Markdown keeps its source syntax and has
+a safe formatted preview. Rich text uses Tiptap/ProseMirror and stable node IDs.
+New source-text records leave `ContentJson` empty. Older records that already
+have ProseMirror JSON remain explicitly identified as legacy structured content.
+
+The upload allowlist is `.txt`, `.md`, `.pdf`, `.docx`, `.cs`, `.js`, `.jsx`,
+`.ts`, `.tsx`, `.py`, `.java`, `.html`, `.css`, `.json`, `.xml`, `.yaml`, `.yml`,
+`.sql`, `.sh`, `.bash`, `.dockerfile`, `.tf`, `.go`, `.rs`, `.toml`, `.ini`,
+`.graphql`, and `.vue`. CSV and log files are not currently accepted. JSON and
+XML source edits are checked for well-formed syntax.
+
+PDF and DOCX uploads support extraction and editing of Lumina's derived content.
+The original file remains available separately; approved edits do not modify or
+rebuild the original PDF/DOCX. “Download current content” exports derived text
+as `.extracted.txt` for those formats. For text/source formats it downloads the
+current canonical text using the document extension. The detail API reports
+per-document capabilities so the UI can select the matching editor and explain
+these limits.
 
 ## Ollama Status
 

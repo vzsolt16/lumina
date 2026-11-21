@@ -16,10 +16,12 @@ import { Table } from '@tiptap/extension-table'
 import TableCell from '@tiptap/extension-table-cell'
 import TableHeader from '@tiptap/extension-table-header'
 import TableRow from '@tiptap/extension-table-row'
-import { updateDocument } from '../../api/client.js'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { downloadCurrentDocument, downloadOriginalDocument, updateDocument } from '../../api/client.js'
 import { uploadDocumentAsset } from '../../api/client.js'
 import { AssetImage } from './AssetImageNode.jsx'
-import { getFileExtension, getFileStem } from '../../constants/documentFormats.js'
+import { getDocumentRepresentation, getFileExtension, getFileStem } from '../../constants/documentFormats.js'
 
 const ID_ATTRIBUTE = {
   id: {
@@ -80,6 +82,16 @@ function createEditorExtensions() {
 // The backend assigns ids to missing block nodes on save. Declaring the attr on
 // every block extension keeps existing ids in Tiptap JSON and DOM parsing.
 const extensions = createEditorExtensions()
+
+function preserveLineEndingStyle(original, edited) {
+  if (!original.includes('\r')) return edited
+  const crlf = (original.match(/\r\n/g) || []).length
+  const withoutCrlf = original.replace(/\r\n/g, '')
+  const loneLf = (withoutCrlf.match(/\n/g) || []).length
+  const loneCr = (withoutCrlf.match(/\r/g) || []).length
+  const newline = crlf >= loneLf && crlf >= loneCr ? '\r\n' : loneCr > loneLf ? '\r' : '\n'
+  return edited.replace(/\r\n|\r|\n/g, '\n').replace(/\n/g, newline)
+}
 
 function parseContent(doc) {
   if (doc?.contentJson) {
@@ -170,6 +182,7 @@ export default function ContentTab() {
   const { doc, onDocUpdated, onContentDirtyChange } = useOutletContext()
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState('')
+  const [sourceText, setSourceText] = useState('')
   const [contentView, setContentView] = useState('formatted')
   const [dirty, setDirty] = useState(false)
   const [saveState, setSaveState] = useState('saved')
@@ -199,6 +212,7 @@ export default function ContentTab() {
     versionRef.current = doc.contentVersion ?? 1
     externalVersionRef.current = doc.contentVersion ?? 1
     setTitle(getFileStem(doc.fileName))
+    setSourceText(doc.content ?? '')
     setEditing(false)
     setDirty(false)
     setSaveState('saved')
@@ -218,6 +232,7 @@ export default function ContentTab() {
       setError('The document changed elsewhere. Save or reload before continuing.')
       return
     }
+    setSourceText(doc.content ?? '')
     editor.commands.setContent(parseContent(doc), false)
     setSaveState('saved')
   }, [doc, editor, dirty])
@@ -230,8 +245,12 @@ export default function ContentTab() {
     if (!editing || !dirty || !editor) return undefined
     const timer = window.setTimeout(() => {
       pendingRef.current = {
-        contentJson: editor.getJSON(),
-        fileName: `${title.trim()}${getFileExtension(doc.fileName)}`,
+        ...(getDocumentRepresentation(doc.fileName, doc.capabilities) === 'sourceText'
+          ? { content: preserveLineEndingStyle(doc.content ?? '', sourceText) }
+          : { contentJson: editor.getJSON() }),
+        fileName: doc.fileName.toLowerCase() === 'dockerfile' && title.trim().toLowerCase() === 'dockerfile'
+          ? doc.fileName
+          : `${title.trim()}${getFileExtension(doc.fileName)}`,
       }
       if (saveLoopRef.current) return
 
@@ -243,8 +262,8 @@ export default function ContentTab() {
           setSaveState('saving')
           try {
             const updated = await updateDocument(docId, {
-              fileName: next.fileName,
-              contentJson: JSON.stringify(next.contentJson),
+              ...(next.fileName !== doc.fileName ? { fileName: next.fileName } : {}),
+              ...(next.content !== undefined ? { content: next.content } : { contentJson: JSON.stringify(next.contentJson) }),
               expectedContentVersion: versionRef.current,
             })
             versionRef.current = updated.contentVersion ?? versionRef.current
@@ -268,7 +287,7 @@ export default function ContentTab() {
       run()
     }, 800)
     return () => window.clearTimeout(timer)
-  }, [doc, docId, dirty, editing, editor, title, onDocUpdated])
+  }, [doc, docId, dirty, editing, editor, title, sourceText, onDocUpdated])
 
   useEffect(() => {
     // Only an actively edited document can have changes that need guarding.
@@ -292,6 +311,7 @@ export default function ContentTab() {
   }
 
   function cancelEditing() {
+    setSourceText(doc?.content ?? '')
     editor?.commands.setContent(parseContent(doc), false)
     setTitle(getFileStem(doc.fileName))
     setDirty(false)
@@ -317,6 +337,8 @@ export default function ContentTab() {
     }
   }
 
+  const representation = getDocumentRepresentation(doc.fileName, doc.capabilities)
+  const isSourceText = representation === 'sourceText'
   const isMarkdown = getFileExtension(doc.fileName).toLowerCase() === '.md'
   const statusLabel = saveState === 'saving'
     ? 'SAVING…'
@@ -329,6 +351,28 @@ export default function ContentTab() {
   return (
     <div>
       <div className="studio-actions">
+        <button className="btn ghost" onClick={async () => {
+          try {
+            const { blob, fileName } = await downloadCurrentDocument(doc.id)
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = fileName
+            link.click()
+            URL.revokeObjectURL(url)
+          } catch (err) { setError(err?.message || 'Download failed.') }
+        }}>Download current content</button>
+        <button className="btn ghost" onClick={async () => {
+          try {
+            const { blob, fileName } = await downloadOriginalDocument(doc.id)
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = fileName
+            link.click()
+            URL.revokeObjectURL(url)
+          } catch (err) { setError(err?.message || 'Download failed.') }
+        }}>Download original</button>
         {editing ? (
           <button className="btn ghost" onClick={cancelEditing} disabled={saveState === 'saving'}>
             Discard changes
@@ -353,6 +397,12 @@ export default function ContentTab() {
           ) : <div className="panel-status">READ_ONLY</div>}
         </div>
         <div className="panel-body">
+          {doc.capabilities?.editsAffectExtractedContentOnly && !doc.capabilities?.legacyStructuredRepresentation && (
+            <div className="doc-edit-note">// EXTRACTED CONTENT: changes apply to Lumina’s editable text only. The original {getFileExtension(doc.fileName).toUpperCase()} file remains unchanged; current content downloads as extracted text.</div>
+          )}
+          {doc.capabilities?.legacyStructuredRepresentation && (
+            <div className="doc-edit-note">// LEGACY REPRESENTATION: this document was previously converted to rich text. Its original upload is preserved separately; editing this view does not restore source formatting.</div>
+          )}
           {editing ? (
             <>
               <div className="doc-edit-note">
@@ -364,23 +414,44 @@ export default function ContentTab() {
                 <span className="doc-extension" aria-hidden="true">{getFileExtension(doc.fileName)}</span>
               </div>
               <label className="doc-edit-label">Content</label>
-              <Toolbar editor={editor} onUpload={() => fileInputRef.current?.click()} />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
-                hidden
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (file) insertImage(file)
-                  event.target.value = ''
-                }}
-              />
-              <EditorContent editor={editor} className="doc-editor" />
+              {isSourceText ? (
+                <textarea
+                  className="doc-source-editor"
+                  aria-label="Source content"
+                  value={sourceText}
+                  onChange={(event) => {
+                    setSourceText(event.target.value)
+                    setDirty(true)
+                    setSaveState('unsaved')
+                    setError('')
+                  }}
+                  spellCheck={false}
+                />
+              ) : (
+                <>
+                  <Toolbar editor={editor} onUpload={() => fileInputRef.current?.click()} />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    hidden
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (file) insertImage(file)
+                      event.target.value = ''
+                    }}
+                  />
+                  <EditorContent editor={editor} className="doc-editor" />
+                </>
+              )}
               {error && <div className="error-line">// ERROR: {error}</div>}
             </>
           ) : doc.content ? (
-            isMarkdown && contentView === 'raw' ? (
+            isSourceText ? (
+              isMarkdown && contentView === 'formatted' ? (
+                <div className="doc-markdown-preview"><ReactMarkdown remarkPlugins={[remarkGfm]}>{doc.content}</ReactMarkdown></div>
+              ) : <pre className="doc-content-view">{doc.content}</pre>
+            ) : isMarkdown && contentView === 'raw' ? (
               <pre className="doc-content-view">{doc.content}</pre>
             ) : (
               <EditorContent editor={editor} className="doc-editor doc-editor-readonly" />
