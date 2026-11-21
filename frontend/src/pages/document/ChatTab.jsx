@@ -661,7 +661,8 @@ export default function ChatTab() {
                             {m.proposal.status.toUpperCase()}
                           </span>
                         </div>
-                        {m.proposal.kind === 'structured' ? (
+                        {m.proposal.kind === 'structured'
+                          && !(m.proposal.targetId && m.proposal.placement) ? (
                           <>
                             <div className="chat-proposal-caption">// CHANGE SUMMARY</div>
                             {m.proposal.target && (
@@ -712,13 +713,18 @@ export default function ChatTab() {
                               <pre className="chat-proposal-block del">{m.proposal.target}</pre>
                             )}
                           </>
-                        ) : m.proposal.kind === 'move_node' ? (
+                        ) : m.proposal.kind === 'move_node'
+                          || (m.proposal.kind === 'structured'
+                            && m.proposal.targetId
+                            && m.proposal.placement) ? (
                           (() => {
                             const targetImage = imageNodes.find(
                               (node) => node.attrs?.id === m.proposal.targetId,
                             )
                             const destinationImage = imageNodes.find(
                               (node) => node.attrs?.id === m.proposal.parentId,
+                            ) || imageNodes.find(
+                              (node) => node.attrs?.id !== m.proposal.targetId,
                             )
                             const isImageMove = Boolean(targetImage || destinationImage)
                             return (
