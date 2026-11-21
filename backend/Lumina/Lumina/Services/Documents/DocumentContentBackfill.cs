@@ -11,17 +11,35 @@ public static class DocumentContentBackfill
         CancellationToken cancellationToken = default)
     {
         var documents = await db.Documents
-            .Where(d => d.ContentJson == string.Empty)
             .ToListAsync(cancellationToken);
 
+        var changed = false;
         foreach (var document in documents)
         {
-            document.ContentJson = converter.CreateFromPlainText(document.Content);
-            document.Content = converter.ExtractPlainText(document.ContentJson);
-            document.ContentSize = System.Text.Encoding.UTF8.GetByteCount(document.Content);
+            if (string.IsNullOrEmpty(document.ContentJson))
+            {
+                if (DocumentFormatDescriptor.UsesCanonicalSourceText(document.FileName, document.ContentJson))
+                {
+                    continue;
+                }
+
+                document.ContentJson = converter.CreateFromPlainText(document.Content);
+                changed = true;
+            }
+
+            var normalized = converter.Normalize(document.ContentJson);
+            var content = converter.ExtractPlainText(normalized);
+            if (!string.Equals(document.ContentJson, normalized, StringComparison.Ordinal)
+                || !string.Equals(document.Content, content, StringComparison.Ordinal))
+            {
+                document.ContentJson = normalized;
+                document.Content = content;
+                document.ContentSize = System.Text.Encoding.UTF8.GetByteCount(document.Content);
+                changed = true;
+            }
         }
 
-        if (documents.Count > 0)
+        if (changed)
         {
             await db.SaveChangesAsync(cancellationToken);
         }

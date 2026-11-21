@@ -77,6 +77,14 @@ public sealed class DocumentContextBuilder : IDocumentContextBuilder
 
         var id = node["attrs"]?["id"]?.GetValue<string>();
         var children = node["content"] as JsonArray;
+        if (type == "image")
+        {
+            builder.Append(string.IsNullOrWhiteSpace(id)
+                ? "[image]"
+                : $"[image id=\"{id}\"]");
+            return;
+        }
+
         if (id is not null && children is not null)
         {
             builder.Append('[').Append(id).Append("] ");

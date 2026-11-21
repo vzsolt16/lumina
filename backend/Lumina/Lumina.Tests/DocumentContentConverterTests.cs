@@ -82,6 +82,28 @@ public class DocumentContentConverterTests
     }
 
     [Fact]
+    public void ExtractPlainText_PreservesImageNodesAndStableIdsInDocumentOrder()
+    {
+        const string json = """
+            {
+              "type": "doc",
+              "content": [
+                {"type": "paragraph", "attrs":{"id":"node-11111111111111111111111111111111"}, "content":[{"type":"text","text":"Before"}]},
+                {"type": "image", "attrs":{"id":"node-22222222222222222222222222222222","assetId":"asset-one"}},
+                {"type": "paragraph", "attrs":{"id":"node-33333333333333333333333333333333"}, "content":[{"type":"text","text":"After"}]}
+              ]
+            }
+            """;
+
+        var text = _converter.ExtractPlainText(json);
+
+        Assert.Equal(
+            "Before\n[image id=\"node-22222222222222222222222222222222\"]\nAfter",
+            text);
+        Assert.DoesNotContain("asset-one", text);
+    }
+
+    [Fact]
     public void Normalize_RejectsNonDocumentRoot()
     {
         var error = Assert.Throws<InvalidOperationException>(() =>

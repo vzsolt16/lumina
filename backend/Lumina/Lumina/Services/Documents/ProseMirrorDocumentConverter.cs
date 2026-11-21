@@ -145,6 +145,14 @@ public sealed class ProseMirrorDocumentConverter : IDocumentContentConverter
             return "\n";
         }
 
+        if (type == "image")
+        {
+            var id = node["attrs"]?["id"]?.GetValue<string>();
+            return string.IsNullOrWhiteSpace(id)
+                ? "[image]"
+                : $"[image id=\"{id}\"]";
+        }
+
         var children = node["content"] as JsonArray;
         if (children is null)
         {
