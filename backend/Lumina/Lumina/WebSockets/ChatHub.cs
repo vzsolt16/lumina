@@ -6,6 +6,7 @@ using Lumina.Services.Chat;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Lumina.Logging;
 
 namespace Lumina.WebSockets;
 
@@ -31,6 +32,7 @@ public class ChatHub : Hub
         string? modelId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        using var traceScope = TraceIdLogScope.PushCurrent(Context.GetHttpContext());
         if (string.IsNullOrWhiteSpace(question))
         {
             throw new HubException("Question must not be empty.");

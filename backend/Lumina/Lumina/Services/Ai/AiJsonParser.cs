@@ -28,7 +28,8 @@ public static class AiJsonParser
             return result;
         }
 
-        logger.LogError("Failed to parse AI response as {Type}: {Response}", typeof(T).Name, response);
+        // Provider output can contain document-derived content; never include it in logs.
+        logger.LogError("Failed to parse AI response as {Type}; response length {ResponseLength}", typeof(T).Name, response.Length);
         throw new InvalidOperationException($"Could not parse AI response as {typeof(T).Name}.");
     }
 

@@ -15,6 +15,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Lumina.Logging;
+using Serilog;
+using Serilog.Sinks.SystemConsole.Themes;
 
 // Load secrets from a .env file (e.g. Jwt__Key) into environment variables
 // BEFORE the host reads configuration. TraversePath walks up from the working
@@ -22,6 +25,16 @@ using Microsoft.IdentityModel.Tokens;
 DotNetEnv.Env.TraversePath().Load();
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Host.UseSerilog((context, services, logger) => logger
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.With<SubsystemEnricher>()
+    .WriteTo.Console(
+        theme: AnsiConsoleTheme.Code,
+        outputTemplate: "{Timestamp:HH:mm:ss.fff} [{Level:u3}] [{Subsystem,-6}] {SourceName} [trace:{TraceId}] {Message:lj}{NewLine}{Exception}"));
 
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
@@ -162,6 +175,14 @@ builder.Services.AddHttpClient<IAiService, GeminiService>(client =>
 });
 
 var app = builder.Build();
+
+app.UseMiddleware<TraceIdLoggingMiddleware>();
+
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+        diagnosticContext.Set("TraceId", System.Diagnostics.Activity.Current?.TraceId.ToString() ?? httpContext.TraceIdentifier);
+});
 
 // Apply pending EF Core migrations
 using (var scope = app.Services.CreateScope())

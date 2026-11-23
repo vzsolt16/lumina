@@ -93,6 +93,9 @@ public class FlashcardService : IFlashcardService
             return;
         }
 
+        var jobWatch = System.Diagnostics.Stopwatch.StartNew();
+        _logger.LogInformation("Flashcard background job started: {JobId} for document {DocumentId}", jobId, job.DocumentId);
+
         using var timerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         // Progress lives in a local variable the timer thread alone owns — never the
@@ -169,11 +172,12 @@ public class FlashcardService : IFlashcardService
                 status = "completed",
                 flashcards
             }, cancellationToken);
+            _logger.LogInformation("Flashcard background job completed: {JobId} in {DurationMs} ms", jobId, jobWatch.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             await StopTimerAsync();
-            _logger.LogError(ex, "Error processing flashcard job {JobId}", jobId);
+            _logger.LogError(ex, "Error processing flashcard job {JobId} for document {DocumentId} after {DurationMs} ms", jobId, job.DocumentId, jobWatch.ElapsedMilliseconds);
             job.Status = JobStatus.Failed;
             await _db.SaveChangesAsync(CancellationToken.None);
 

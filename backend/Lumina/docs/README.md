@@ -43,6 +43,8 @@ Configuration is loaded from `appsettings*.json`, environment variables, and a t
 | `Rag` | Chunk size/overlap, index debounce, retrieval top-K and context/full-document thresholds | Chunker, index scheduler, selector |
 | `Chat` | Output-token ceiling and context safety margin | `ChatRequestBudgeter` / orchestration |
 
+Logging uses Serilog via `ILogger<T>`. `Serilog:MinimumLevel` controls base and category levels; the development config enables `Debug` for Lumina, while the base config keeps Microsoft/System logs at `Warning`. Chat request/SignalR logs carry `TraceId` through ambient log context; background jobs use job/document IDs. See [chat logging and observability](chat-and-workers.md#logging-and-observability) for per-request usage and aggregate interaction metrics.
+
 Values in [appsettings.json](../appsettings.json) are defaults, not secrets. The development settings currently only adjust logging. Qdrant and Ollama are external processes and are not provisioned by the API.
 
 ## Current boundaries

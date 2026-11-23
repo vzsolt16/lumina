@@ -33,6 +33,16 @@ sequenceDiagram
 
 [ChatOrchestrator](../Services/Chat/ChatOrchestrator.cs) streams Gemini output and handles provider tool calls, with a maximum of five model turns and twenty tool executions, repeated-call blocking, and request-budget checks. Chat tools are executed by `ChatService`; document changes are proposals (with a captured content version) and are applied only after user approval, while rename applies immediately. On completion, the visible answer, user question, optional proposal, and selected sources are persisted; tool chatter is not stored as visible assistant text. Conversation/message models are in [Models](../Models/ChatConversation.cs) and [ChatMessage.cs](../Models/ChatMessage.cs).
 
+## Logging and observability
+
+`TraceIdLoggingMiddleware` pushes ASP.NET Core's current Activity trace ID into Serilog's async `LogContext` for HTTP requests. `ChatHub` applies the same scope for SignalR invocations, preferring the current Activity and falling back to its HTTP connection context. The ambient property flows through asynchronous chat, retrieval, and embedding calls; work outside an HTTP/SignalR context has no `TraceId` and is correlated by its job/document ID instead. No trace ID is manually threaded through service methods.
+
+Each provider call keeps a separate `Chat provider usage` event with `ConversationId`, `ModelId`, `RequestNumber`, input/output/total token counts, and `ToolCallCount`. Usage is recorded once per request (the final usage metadata received for that request) and accumulated by [ChatInteractionMetrics](../Services/Chat/ChatInteractionMetrics.cs). At the end of each enumerated chat interaction, `ChatService` emits one `Chat interaction summary` with `ConversationId`, optional `DocumentId`, `ModelIds`, `ProviderRequests`, token totals, `ToolExecutions`, `DurationMs`, and `Outcome` (`Completed`, `TurnLimitReached`, `Failed`, or `Cancelled`). Partial usage collected before a provider failure/cancellation remains included.
+
+Routine model request starts and retrieval starts are Debug; request completions, provider usage, successful evidence construction, and interaction summaries are Information. Provider/tool failures retain Warning or Error levels. Tool completion logs include `ExecutionNumber`, byte counts and outcome; unexpected exceptions add stable `ErrorCode` and `ExceptionType`, while retryability remains unset when unknown. Tool arguments and prompt/document content are not logged.
+
+The `TraceId` is absent in non-request background work by design. Current failure classification treats a stream that ends without persistence as `Cancelled` when its token is canceled, otherwise `Failed`; provider usage metadata is provider-supplied and may be unavailable.
+
 ## Background work
 
 There are two separate in-process mechanisms:

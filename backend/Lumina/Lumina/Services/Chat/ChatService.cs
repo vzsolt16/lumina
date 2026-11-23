@@ -200,13 +200,50 @@ public class ChatService : IChatService
         await db.SaveChangesAsync();
     }
 
-    public async IAsyncEnumerable<ChatStreamEvent> StreamAnswerAsync(
+    public IAsyncEnumerable<ChatStreamEvent> StreamAnswerAsync(
         Guid conversationId,
         Guid userId,
         string question,
         string? modelId,
+        CancellationToken cancellationToken = default) =>
+        StreamAnswerWithSummaryAsync(conversationId, userId, question, modelId, cancellationToken);
+
+    private async IAsyncEnumerable<ChatStreamEvent> StreamAnswerWithSummaryAsync(
+        Guid conversationId,
+        Guid userId,
+        string question,
+        string? modelId,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var metrics = new ChatInteractionMetrics();
+        var summaryWatch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            await foreach (var item in StreamAnswerCoreAsync(conversationId, userId, question, modelId, metrics, cancellationToken))
+                yield return item;
+        }
+        finally
+        {
+            var outcome = metrics.Completed
+                ? metrics.TurnLimitReached ? "TurnLimitReached" : "Completed"
+                : cancellationToken.IsCancellationRequested ? "Cancelled" : "Failed";
+            _logger.LogInformation("Chat interaction summary. ConversationId={ConversationId} DocumentId={DocumentId} ModelIds={ModelIds} ProviderRequests={ProviderRequests} TotalInputTokens={TotalInputTokens} TotalOutputTokens={TotalOutputTokens} TotalTokens={TotalTokens} ToolExecutions={ToolExecutions} DurationMs={DurationMs} Outcome={Outcome}",
+                conversationId, metrics.DocumentId, metrics.ModelIds.ToArray(), metrics.ProviderRequests,
+                metrics.TotalInputTokens, metrics.TotalOutputTokens, metrics.TotalTokens,
+                metrics.ToolExecutions, summaryWatch.ElapsedMilliseconds, outcome);
+        }
+    }
+
+    private async IAsyncEnumerable<ChatStreamEvent> StreamAnswerCoreAsync(
+        Guid conversationId,
+        Guid userId,
+        string question,
+        string? modelId,
+        ChatInteractionMetrics metrics,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var requestWatch = System.Diagnostics.Stopwatch.StartNew();
+        _logger.LogInformation("Chat request received for conversation {ConversationId}; question length {QuestionLength}", conversationId, question.Length);
         Guid documentId;
         string fileName;
         string content;
@@ -233,12 +270,14 @@ public class ChatService : IChatService
             }
 
             documentId = conversation.Document.Id;
+            metrics.SetDocument(documentId);
             fileName = conversation.Document.FileName;
             content = conversation.Document.Content;
             sourceTextRepresentation = DocumentFormatDescriptor.UsesCanonicalSourceText(
                 conversation.Document.FileName, conversation.Document.ContentJson);
             contentVersion = conversation.Document.ContentVersion;
             resolvedModelId = _modelCatalog.Resolve(modelId ?? conversation.ModelId).Id;
+            metrics.AddModel(resolvedModelId);
             if (modelId is not null && conversation.ModelId != resolvedModelId)
             {
                 conversation.ModelId = resolvedModelId;
@@ -261,7 +300,7 @@ public class ChatService : IChatService
             - ChatRequestBudgeter.EstimateTokens(baseline, tools) - 128);
         selectedContext = await _contextSelector.SelectAsync(
             documentId, userId, question, history.Select(h => h.Content).ToArray(), cancellationToken, evidenceBudget);
-        _logger.LogInformation("Selected {ContextMode} context for document {DocumentId} version {Version}; approximate context tokens {ContextTokens}; outcome {Outcome}; complete {Complete}",
+        _logger.LogDebug("Selected {ContextMode} context for document {DocumentId} version {Version}; approximate context tokens {ContextTokens}; outcome {Outcome}; complete {Complete}",
             selectedContext.Mode, documentId, contentVersion, selectedContext.ApproxTokens, selectedContext.Outcome, selectedContext.Complete);
         var messages = BuildMessages(fileName, selectedContext, history, question, sourceTextRepresentation);
 
@@ -338,7 +377,7 @@ public class ChatService : IChatService
             }
 
             await foreach (var orchestrationEvent in _orchestrator.RunAsync(
-                conversationId, resolvedModelId, messages, tools, ExecuteForOrchestratorAsync, cancellationToken))
+                conversationId, resolvedModelId, messages, tools, ExecuteForOrchestratorAsync, cancellationToken, metrics))
             {
                 switch (orchestrationEvent.Kind)
                 {
@@ -372,6 +411,7 @@ public class ChatService : IChatService
                     case ChatOrchestrationEventKind.TurnLimitReached:
                     case ChatOrchestrationEventKind.ToolLimitReached:
                         turnLimitReached = true;
+                        metrics.TurnLimitReached = true;
                         break;
                 }
             }
@@ -401,6 +441,12 @@ public class ChatService : IChatService
         }
         finally
         {
+            if (completed)
+                _logger.LogInformation("Chat response streaming completed for conversation {ConversationId} document {DocumentId} in {DurationMs} ms; source count {SourceCount}", conversationId, documentId, requestWatch.ElapsedMilliseconds, selectedContext.Sources.Count);
+            else if (cancellationToken.IsCancellationRequested)
+                _logger.LogInformation("Chat response streaming cancelled for conversation {ConversationId} document {DocumentId} after {DurationMs} ms", conversationId, documentId, requestWatch.ElapsedMilliseconds);
+            else
+                _logger.LogWarning("Chat response streaming interrupted for conversation {ConversationId} document {DocumentId} after {DurationMs} ms", conversationId, documentId, requestWatch.ElapsedMilliseconds);
             // Persist the exchange only when the answer finished cleanly. On an
             // error or a client disconnect mid-stream we save nothing, so history
             // never contains a truncated reply (which would poison later prompts).
@@ -452,6 +498,7 @@ public class ChatService : IChatService
                 // The request token may already be cancelled here; persisting the
                 // completed answer shouldn't be abandoned because of that.
                 await db.SaveChangesAsync(CancellationToken.None);
+                metrics.Completed = true;
             }
         }
     }

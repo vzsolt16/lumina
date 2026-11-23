@@ -3,6 +3,7 @@ using System.Text.Json;
 using Lumina.Services.AI;
 using Lumina.Services.Chat;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Lumina.Tests;
 
@@ -50,6 +51,32 @@ public sealed class ChatOrchestratorTests
 
         Assert.Equal([1, 2], order);
         Assert.Equal(2, provider.RequestCount);
+    }
+
+    [Fact]
+    public async Task ToolExecutionNumbersAndProviderRequestNumbersAreSequential()
+    {
+        var logs = new CapturingLoggerProvider();
+        using var factory = LoggerFactory.Create(builder => builder.AddProvider(logs));
+        var first = Call("read", "{\"n\":1}");
+        var second = Call("read", "{\"n\":2}");
+        var provider = new FakeAiService([
+            [ToolCall(first), ToolCall(second), new AiChatDelta(null, null, new AiUsageMetadata(4, 2, 6))],
+            [Content("Done"), new AiChatDelta(null, null, new AiUsageMetadata(3, 1, 4))]
+        ]);
+        var metrics = new ChatInteractionMetrics();
+        var orchestrator = new ChatOrchestrator(provider, factory.CreateLogger<ChatOrchestrator>());
+        await Collect(orchestrator.RunAsync(ConversationId, "test-model", [], [DummyTool],
+            (_, _) => Task.FromResult(Succeeded("read")), metrics: metrics));
+
+        var toolLogs = logs.Entries.Where(entry => entry.Message.StartsWith("Chat tool completed.", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(new[] { 1, 2 }, toolLogs.Select(entry => (int)entry.Properties["ExecutionNumber"]!).ToArray());
+        var usageLogs = logs.Entries.Where(entry => entry.Message.StartsWith("Chat provider usage.", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(new[] { 1, 2 }, usageLogs.Select(entry => (int)entry.Properties["RequestNumber"]!).ToArray());
+        Assert.Equal(2, (int)usageLogs[0].Properties["ToolCallCount"]!);
+        Assert.Equal(2, metrics.ToolExecutions);
+        Assert.Equal(2, metrics.ProviderRequests);
+        Assert.Equal(10, metrics.TotalTokens);
     }
 
     [Fact]
@@ -133,10 +160,41 @@ public sealed class ChatOrchestratorTests
         var provider = new FakeAiService([Turn(ToolCall(Call("crash", "{}"))), Turn(Content("Recovered"))]);
         var events = await Run(provider, (_, _) => throw new InvalidOperationException("private exception details"));
 
-        Assert.Contains(events, e => e.ToolResult?.Status == ToolExecutionStatus.Failed
-            && e.ToolResult.Message.Contains("failed to execute", StringComparison.Ordinal));
+        var failed = Assert.Single(events, e => e.ToolResult?.Status == ToolExecutionStatus.Failed);
+        Assert.Contains("failed to execute", failed.ToolResult!.Message, StringComparison.Ordinal);
+        Assert.Equal("ToolExecutionException", failed.ToolResult.ErrorCode);
+        Assert.Equal(nameof(InvalidOperationException), failed.ToolResult.ExceptionType);
+        Assert.Null(failed.ToolResult.Retryable);
         Assert.Contains(events, e => e.Kind == ChatOrchestrationEventKind.Token && e.Text == "Recovered");
         Assert.Equal(2, provider.RequestCount);
+    }
+
+    [Fact]
+    public async Task ExpectedNotFoundAndUnexpectedToolExceptionHaveDistinctStructuredLogs()
+    {
+        var logs = new CapturingLoggerProvider();
+        using var factory = LoggerFactory.Create(builder => builder.AddProvider(logs));
+        var provider = new FakeAiService([Turn(
+            ToolCall(Call("missing", "{\"private\":\"value\"}")),
+            ToolCall(Call("crash", "{}"))), Turn(Content("Recovered"))]);
+        var orchestrator = new ChatOrchestrator(provider, factory.CreateLogger<ChatOrchestrator>());
+        await Collect(orchestrator.RunAsync(ConversationId, "test-model", [], [DummyTool], (call, _) =>
+        {
+            if (call.Name == "missing") return Task.FromResult(new ToolExecutionResult(ToolExecutionStatus.NotFound, "not found"));
+            throw new InvalidOperationException("private exception");
+        }));
+
+        var entries = logs.Entries.Where(entry => entry.Message.StartsWith("Chat tool completed.", StringComparison.Ordinal)).ToArray();
+        var expected = Assert.Single(entries, entry => Equals(entry.Properties["Outcome"], ToolExecutionStatus.NotFound));
+        Assert.Equal(LogLevel.Information, expected.Level);
+        Assert.Equal("NotFound", expected.Properties["ErrorCode"]);
+        Assert.Null(expected.Properties["ExceptionType"]);
+        var failed = Assert.Single(entries, entry => Equals(entry.Properties["Outcome"], ToolExecutionStatus.Failed));
+        Assert.Equal(LogLevel.Warning, failed.Level);
+        Assert.Equal("ToolExecutionException", failed.Properties["ErrorCode"]);
+        Assert.Equal(nameof(InvalidOperationException), failed.Properties["ExceptionType"]);
+        Assert.Null(failed.Properties["Retryable"]);
+        Assert.DoesNotContain(logs.Entries, entry => entry.Message.Contains("private", StringComparison.Ordinal));
     }
 
     [Fact]

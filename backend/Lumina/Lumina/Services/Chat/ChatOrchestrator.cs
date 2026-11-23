@@ -28,7 +28,10 @@ public sealed record ToolExecutionResult(
     ToolExecutionStatus Status,
     string Message,
     bool StopAfterTurn = false,
-    object? Metadata = null);
+    object? Metadata = null,
+    string? ErrorCode = null,
+    string? ExceptionType = null,
+    bool? Retryable = null);
 
 public enum ChatOrchestrationEventKind { Token, ToolStarted, ToolCompleted, TurnLimitReached, ToolLimitReached, RequestBudgetExceeded }
 
@@ -50,7 +53,8 @@ public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestra
         List<AiMessage> messages,
         IReadOnlyList<AiTool> tools,
         Func<AiToolCall, CancellationToken, Task<ToolExecutionResult>> executeTool,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default,
+        ChatInteractionMetrics? metrics = null)
     {
         var seenCalls = new Dictionary<string, int>(StringComparer.Ordinal);
         var progress = 0;
@@ -90,8 +94,12 @@ public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestra
             var requestWatch = System.Diagnostics.Stopwatch.StartNew();
             var calls = new List<AiToolCall>();
             var rawText = new StringBuilder();
-            var requestNumber = turn + 1;
-            logger.LogInformation("Chat model request started. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber}",
+            var requestNumber = metrics?.StartProviderRequest(modelId) ?? turn + 1;
+            AiUsageMetadata? requestUsage = null;
+            Exception? requestFailure = null;
+            var requestCancelled = false;
+            var requestCompleted = false;
+            logger.LogDebug("Chat model request started. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber}",
                 conversationId, modelId, requestNumber);
             try
             {
@@ -102,18 +110,21 @@ public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestra
                 {
                     bool hasNext;
                     try { hasNext = await stream.MoveNextAsync(); }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        requestCancelled = true;
+                        throw;
+                    }
                     catch (Exception ex)
                     {
-                        logger.LogError("Chat provider request failed. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber} DurationMs={DurationMs} ErrorType={ErrorType}",
+                        requestFailure = ex;
+                        logger.LogError(ex, "Chat provider request failed. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber} DurationMs={DurationMs} ErrorType={ErrorType}",
                             conversationId, modelId, requestNumber, requestWatch.ElapsedMilliseconds, ex.GetType().Name);
                         throw;
                     }
-                    if (!hasNext) break;
+                    if (!hasNext) { requestCompleted = true; break; }
                     var delta = stream.Current;
-                    if (delta.Usage is not null)
-                        logger.LogInformation("Chat provider usage. ConversationId={ConversationId} ModelId={ModelId} InputTokens={InputTokens} OutputTokens={OutputTokens} TotalTokens={TotalTokens}",
-                            conversationId, modelId, delta.Usage.InputTokens, delta.Usage.OutputTokens, delta.Usage.TotalTokens);
+                    if (delta.Usage is not null) requestUsage = delta.Usage;
                     if (delta.ToolCalls is { Count: > 0 } deltaCalls) calls.AddRange(deltaCalls);
                     if (string.IsNullOrEmpty(delta.Content)) continue;
 
@@ -131,8 +142,20 @@ public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestra
             }
             finally
             {
-                logger.LogInformation("Chat model request completed. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber} DurationMs={DurationMs} ToolCallCount={ToolCallCount}",
-                    conversationId, modelId, requestNumber, requestWatch.ElapsedMilliseconds, calls.Count);
+                metrics?.RecordUsage(requestUsage);
+                if (requestUsage is not null)
+                    logger.LogInformation("Chat provider usage. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber} InputTokens={InputTokens} OutputTokens={OutputTokens} TotalTokens={TotalTokens} ToolCallCount={ToolCallCount}",
+                        conversationId, modelId, requestNumber, requestUsage.InputTokens, requestUsage.OutputTokens,
+                        requestUsage.TotalTokens, calls.Count);
+                if (requestCancelled)
+                    logger.LogInformation("Chat model request cancelled. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber} DurationMs={DurationMs} ToolCallCount={ToolCallCount}",
+                        conversationId, modelId, requestNumber, requestWatch.ElapsedMilliseconds, calls.Count);
+                else if (requestCompleted && requestFailure is null)
+                    logger.LogInformation("Chat model request completed. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber} DurationMs={DurationMs} ToolCallCount={ToolCallCount}",
+                        conversationId, modelId, requestNumber, requestWatch.ElapsedMilliseconds, calls.Count);
+                else if (requestFailure is null)
+                    logger.LogError("Chat model request did not complete. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber} DurationMs={DurationMs}",
+                        conversationId, modelId, requestNumber, requestWatch.ElapsedMilliseconds);
             }
 
             if (calls.Count == 0) yield break;
@@ -188,9 +211,8 @@ public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestra
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch (Exception ex)
                 {
-                    result = new(ToolExecutionStatus.Failed, "The tool failed to execute. You may try a different approach.");
-                    logger.LogError("Chat tool execution failed. ConversationId={ConversationId} ToolName={ToolName} ErrorType={ErrorType}",
-                        conversationId, call.Name, ex.GetType().Name);
+                    result = new(ToolExecutionStatus.Failed, "The tool failed to execute. You may try a different approach.",
+                        ErrorCode: "ToolExecutionException", ExceptionType: ex.GetType().Name);
                 }
                 toolExecutions++;
                 messages.Add(new AiMessage("tool", result.Message, ToolName: call.Name));
@@ -199,15 +221,24 @@ public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestra
                     progress++;
                     seenCalls[fingerprint] = progress;
                 }
-                logger.LogInformation("Chat tool completed. ConversationId={ConversationId} ToolName={ToolName} Outcome={Outcome} DurationMs={DurationMs} InputBytes={InputBytes} OutputBytes={OutputBytes} ExecutionNumber={ExecutionNumber}",
+                metrics?.RecordToolExecution();
+                var logLevel = result.Status is ToolExecutionStatus.Succeeded or ToolExecutionStatus.NotFound
+                    or ToolExecutionStatus.NeedsContext or ToolExecutionStatus.ProposalCreated
+                    or ToolExecutionStatus.TargetAmbiguous or ToolExecutionStatus.InsufficientContext
+                    or ToolExecutionStatus.DocumentNotAccessible
+                    ? LogLevel.Information : LogLevel.Warning;
+                logger.Log(logLevel, "Chat tool completed. ConversationId={ConversationId} ToolName={ToolName} Outcome={Outcome} DurationMs={DurationMs} InputBytes={InputBytes} OutputBytes={OutputBytes} ExecutionNumber={ExecutionNumber} ErrorCode={ErrorCode} ExceptionType={ExceptionType} Retryable={Retryable}",
                     conversationId, call.Name, result.Status, toolWatch.ElapsedMilliseconds,
-                    GetArgumentSize(call.Arguments), result.Message.Length, toolExecutions);
+                    GetArgumentSize(call.Arguments), result.Message.Length, toolExecutions,
+                    result.ErrorCode ?? (result.Status == ToolExecutionStatus.Succeeded ? null : result.Status.ToString()),
+                    result.ExceptionType, result.Retryable);
                 yield return new(ChatOrchestrationEventKind.ToolCompleted, ToolCall: call, ToolResult: result);
                 stopAfterTurn |= result.StopAfterTurn;
             }
             if (stopAfterTurn) yield break;
         }
 
+        if (metrics is not null) metrics.TurnLimitReached = true;
         logger.LogWarning("Chat model-turn limit reached. ConversationId={ConversationId} ModelId={ModelId} MaxModelTurns={MaxModelTurns} ToolExecutions={ToolExecutions}",
             conversationId, modelId, MaxModelTurns, toolExecutions);
         yield return new(ChatOrchestrationEventKind.TurnLimitReached);

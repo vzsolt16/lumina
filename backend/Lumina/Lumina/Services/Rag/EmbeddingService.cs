@@ -31,6 +31,7 @@ public sealed class OllamaEmbeddingService(HttpClient http, IConfiguration confi
         var started = System.Diagnostics.Stopwatch.StartNew();
         try
         {
+            logger.LogDebug("Embedding generation started for {TextCount} texts with model {ModelId}", input.Length, Model);
             using var response = await http.PostAsJsonAsync("api/embed", new { model = Model, input }, ct);
             response.EnsureSuccessStatusCode();
             var body = await response.Content.ReadFromJsonAsync<EmbedResponse>(cancellationToken: ct)
@@ -41,7 +42,7 @@ public sealed class OllamaEmbeddingService(HttpClient http, IConfiguration confi
             if (body.Embeddings.Any(v => v.Length != dimensions)) throw new InvalidOperationException("Ollama returned vectors with inconsistent dimensions.");
             if (Dimensions is int previous && previous != dimensions) throw new InvalidOperationException($"Embedding dimension changed from {previous} to {dimensions}.");
             Dimensions = dimensions;
-            logger.LogInformation("Ollama embedded {TextCount} texts in {DurationMs} ms with {Dimensions} dimensions", input.Length, started.ElapsedMilliseconds, dimensions);
+            logger.LogInformation("Ollama embedded {TextCount} texts with model {ModelId} in {DurationMs} ms with {Dimensions} dimensions", input.Length, Model, started.ElapsedMilliseconds, dimensions);
             return body.Embeddings;
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)

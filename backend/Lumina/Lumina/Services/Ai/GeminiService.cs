@@ -171,25 +171,24 @@ public sealed class GeminiService : IAiService
                 return response;
             }
 
-            var detail = await response.Content.ReadAsStringAsync(cancellationToken);
             var transient = response.StatusCode == System.Net.HttpStatusCode.RequestTimeout
                 || response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
                 || (int)response.StatusCode >= 500;
             if (!transient || attempt == maxAttempts)
             {
                 _logger.LogError(
-                    "Gemini request failed after {AttemptCount} attempt(s): {StatusCode} {Detail}",
-                    attempt, (int)response.StatusCode, detail);
+                    "Gemini request failed after {AttemptCount} attempt(s): {StatusCode}",
+                    attempt, (int)response.StatusCode);
                 response.Dispose();
                 throw new HttpRequestException(
-                    $"Gemini request failed ({(int)response.StatusCode} {response.ReasonPhrase}): {detail}",
+                    $"Gemini request failed ({(int)response.StatusCode} {response.ReasonPhrase}).",
                     null,
                     response.StatusCode);
             }
 
             _logger.LogWarning(
-                "Transient Gemini failure on attempt {Attempt}: {StatusCode} {Detail}",
-                attempt, (int)response.StatusCode, detail);
+                "Transient Gemini failure on attempt {Attempt}: {StatusCode}",
+                attempt, (int)response.StatusCode);
             response.Dispose();
             await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt - 1)), cancellationToken);
         }

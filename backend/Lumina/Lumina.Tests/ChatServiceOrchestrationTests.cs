@@ -9,6 +9,7 @@ using Lumina.Services.Rag;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Lumina.Tests;
 
@@ -112,8 +113,9 @@ public sealed class ChatServiceOrchestrationTests
     [Fact]
     public async Task ProviderFailureDoesNotPersistPartialExchange()
     {
-        var ai = new ScriptedAiService([], fail: true);
-        await using var provider = CreateProvider(ai);
+        var logs = new CapturingLoggerProvider();
+        var ai = new ScriptedAiService([], fail: true, failAfterUsage: true);
+        await using var provider = CreateProvider(ai, logs);
         var (_, conversationId, userId) = await Seed(provider);
 
         using (var scope = provider.CreateScope())
@@ -126,6 +128,98 @@ public sealed class ChatServiceOrchestrationTests
         using var verify = provider.CreateScope();
         Assert.Empty(await verify.ServiceProvider.GetRequiredService<LuminaDbContext>()
             .ChatMessages.Where(m => m.ConversationId == conversationId).ToListAsync());
+        var summary = Assert.Single(logs.Entries, entry => entry.Message.StartsWith("Chat interaction summary.", StringComparison.Ordinal));
+        Assert.Equal("Failed", summary.Properties["Outcome"]);
+        Assert.Equal(1, (int)summary.Properties["ProviderRequests"]!);
+        Assert.Equal(4, (int)summary.Properties["TotalInputTokens"]!);
+        Assert.Equal(2, (int)summary.Properties["TotalOutputTokens"]!);
+        Assert.Equal(6, (int)summary.Properties["TotalTokens"]!);
+    }
+
+    [Fact]
+    public async Task MultipleProviderRequestsAggregateUsageAndEmitOneSummary()
+    {
+        var logs = new CapturingLoggerProvider();
+        var ai = new ScriptedAiService([
+            [new AiChatDelta(null, [Call("rename_document", "{\"new_name\":\"Renamed\"}")], new AiUsageMetadata(5, 2, 7))],
+            [new AiChatDelta("Done", null, new AiUsageMetadata(10, 3, 13))]
+        ]);
+        await using var provider = CreateProvider(ai, logs);
+        var (documentId, conversationId, userId) = await Seed(provider);
+
+        using (var scope = provider.CreateScope())
+            await Collect(scope.ServiceProvider.GetRequiredService<IChatService>()
+                .StreamAnswerAsync(conversationId, userId, "Rename and finish", null));
+
+        var summary = Assert.Single(logs.Entries, entry => entry.Message.StartsWith("Chat interaction summary.", StringComparison.Ordinal));
+        Assert.Equal(documentId, summary.Properties["DocumentId"]);
+        Assert.Equal(2, (int)summary.Properties["ProviderRequests"]!);
+        Assert.Equal(15, (int)summary.Properties["TotalInputTokens"]!);
+        Assert.Equal(5, (int)summary.Properties["TotalOutputTokens"]!);
+        Assert.Equal(20, (int)summary.Properties["TotalTokens"]!);
+        Assert.Equal(1, (int)summary.Properties["ToolExecutions"]!);
+        Assert.Equal("Completed", summary.Properties["Outcome"]);
+
+        var usage = logs.Entries.Where(entry => entry.Message.StartsWith("Chat provider usage.", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, usage.Length);
+        Assert.Equal(new[] { 1, 2 }, usage.Select(entry => (int)entry.Properties["RequestNumber"]!).ToArray());
+        Assert.Equal(new[] { 1, 0 }, usage.Select(entry => (int)entry.Properties["ToolCallCount"]!).ToArray());
+    }
+
+    [Fact]
+    public async Task CancellationEmitsOneCancelledSummary()
+    {
+        var logs = new CapturingLoggerProvider();
+        var ai = new ScriptedAiService([], block: true);
+        await using var provider = CreateProvider(ai, logs);
+        var (_, conversationId, userId) = await Seed(provider);
+        using var cancellation = new CancellationTokenSource();
+        using var scope = provider.CreateScope();
+        var enumerator = scope.ServiceProvider.GetRequiredService<IChatService>()
+            .StreamAnswerAsync(conversationId, userId, "Wait", null, cancellation.Token).GetAsyncEnumerator();
+        var pending = enumerator.MoveNextAsync().AsTask();
+        await ai.RequestStarted.Task;
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        await enumerator.DisposeAsync();
+
+        var summary = Assert.Single(logs.Entries, entry => entry.Message.StartsWith("Chat interaction summary.", StringComparison.Ordinal));
+        Assert.Equal("Cancelled", summary.Properties["Outcome"]);
+        Assert.Equal(1, (int)summary.Properties["ProviderRequests"]!);
+    }
+
+    [Fact]
+    public async Task TurnLimitEmitsOneTurnLimitSummaryWithAllToolExecutions()
+    {
+        var logs = new CapturingLoggerProvider();
+        var turns = Enumerable.Range(0, ChatOrchestrator.MaxModelTurns)
+            .Select(i => new[] { new AiChatDelta(null, [Call($"missing_{i}", "{}")]) }).ToArray();
+        await using var provider = CreateProvider(new ScriptedAiService(turns), logs);
+        var (_, conversationId, userId) = await Seed(provider);
+        using (var scope = provider.CreateScope())
+            await Collect(scope.ServiceProvider.GetRequiredService<IChatService>()
+                .StreamAnswerAsync(conversationId, userId, "Keep trying", null));
+
+        var summary = Assert.Single(logs.Entries, entry => entry.Message.StartsWith("Chat interaction summary.", StringComparison.Ordinal));
+        Assert.Equal("TurnLimitReached", summary.Properties["Outcome"]);
+        Assert.Equal(ChatOrchestrator.MaxModelTurns, (int)summary.Properties["ProviderRequests"]!);
+        Assert.Equal(ChatOrchestrator.MaxModelTurns, (int)summary.Properties["ToolExecutions"]!);
+    }
+
+    [Fact]
+    public async Task MissingConversationStillEmitsOneFailureSummary()
+    {
+        var logs = new CapturingLoggerProvider();
+        await using var provider = CreateProvider(new ScriptedAiService([]), logs);
+        using var scope = provider.CreateScope();
+        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            await Collect(scope.ServiceProvider.GetRequiredService<IChatService>()
+                .StreamAnswerAsync(Guid.NewGuid(), Guid.NewGuid(), "Missing", null)));
+
+        var summary = Assert.Single(logs.Entries, entry => entry.Message.StartsWith("Chat interaction summary.", StringComparison.Ordinal));
+        Assert.Equal("Failed", summary.Properties["Outcome"]);
+        Assert.Null(summary.Properties["DocumentId"]);
+        Assert.Equal(0, (int)summary.Properties["ProviderRequests"]!);
     }
 
     [Fact]
@@ -175,10 +269,10 @@ public sealed class ChatServiceOrchestrationTests
             .Documents.Where(d => d.Id == documentId).Select(d => d.Content).SingleAsync());
     }
 
-    private static ServiceProvider CreateProvider(IAiService ai)
+    private static ServiceProvider CreateProvider(IAiService ai, CapturingLoggerProvider? logs = null)
     {
         var services = new ServiceCollection();
-        services.AddLogging();
+        services.AddLogging(builder => { if (logs is not null) builder.AddProvider(logs); });
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         var databaseName = Guid.NewGuid().ToString();
         services.AddDbContext<LuminaDbContext>(options => options.UseInMemoryDatabase(databaseName));
@@ -244,16 +338,24 @@ public sealed class ChatServiceOrchestrationTests
         public GeminiModelDefinition Resolve(string? modelId) => Model;
     }
 
-    private sealed class ScriptedAiService(IReadOnlyList<AiChatDelta[]> turns, bool fail = false) : IAiService
+    private sealed class ScriptedAiService(IReadOnlyList<AiChatDelta[]> turns, bool fail = false, bool block = false,
+        bool failAfterUsage = false) : IAiService
     {
         private int _index;
         public List<AiMessage[]> Requests { get; } = [];
+        public TaskCompletionSource RequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000, string? modelId = null) => throw new NotSupportedException();
         public IAsyncEnumerable<string> GenerateStreamAsync(string prompt, int maxTokens = 2000, CancellationToken cancellationToken = default, string? modelId = null) => throw new NotSupportedException();
         public async IAsyncEnumerable<AiChatDelta> ChatStreamAsync(IReadOnlyList<AiMessage> messages, IReadOnlyList<AiTool> tools,
             int maxTokens = 4000, [EnumeratorCancellation] CancellationToken cancellationToken = default, string? modelId = null)
         {
-            if (fail) throw new InvalidOperationException("provider failed");
+            RequestStarted.TrySetResult();
+            if (block) await Task.Delay(Timeout.Infinite, cancellationToken);
+            if (fail)
+            {
+                if (failAfterUsage) yield return new AiChatDelta(null, null, new AiUsageMetadata(4, 2, 6));
+                throw new InvalidOperationException("provider failed");
+            }
             Requests.Add(messages.ToArray());
             if (_index >= turns.Count) yield break;
             foreach (var delta in turns[_index++])
