@@ -180,7 +180,8 @@ public class ChatService : IChatService
                 ContentVersion = m.ProposalContentVersion,
                 TargetId = GetStoredOperation(m.ProposalOperationJson)?.TargetId,
                 ParentId = GetStoredOperation(m.ProposalOperationJson)?.ParentId,
-                Placement = GetStoredOperation(m.ProposalOperationJson)?.Placement
+                Placement = GetStoredOperation(m.ProposalOperationJson)?.Placement,
+                Changes = GetTextProposalChanges(m.ProposalOperationJson)
             },
             Sources = DeserializeSources(m.SourcesJson)
         }).ToList();
@@ -425,7 +426,8 @@ public class ChatService : IChatService
                             ContentVersion = draft.ContentVersion,
                             TargetId = GetStoredOperation(draft.OperationJson)?.TargetId,
                             ParentId = GetStoredOperation(draft.OperationJson)?.ParentId,
-                            Placement = GetStoredOperation(draft.OperationJson)?.Placement
+                            Placement = GetStoredOperation(draft.OperationJson)?.Placement,
+                            Changes = GetTextProposalChanges(draft.OperationJson)
                         };
                         executionStatus = ToolExecutionStatus.ProposalCreated;
                         stopAfterTurn = true;
@@ -1433,9 +1435,11 @@ public class ChatService : IChatService
                     return validationError;
                 }
 
+                var replacedContent = await GetNodeLabelAsync(
+                    documentId, userId, resolvedTargetId, cancellationToken) ?? targetId;
                 return CreateStructuredProposal(
                     "Proposed replacing the node text. The user will review and apply it.",
-                    targetId,
+                    replacedContent,
                     newText,
                     "replace_node",
                     operation,
@@ -1613,9 +1617,11 @@ public class ChatService : IChatService
                 }
 
                 var label = listType == "bulletList" ? "bulleted list" : "numbered list";
+                var currentList = await GetNodeLabelAsync(
+                    documentId, userId, resolvedTargetId, cancellationToken) ?? targetId;
                 return CreateStructuredProposal(
                     $"Proposed changing the list structure to a {label}. The user will review and apply it.",
-                    targetId,
+                    currentList,
                     label,
                     "change_list_type",
                     operation,
@@ -1989,6 +1995,23 @@ public class ChatService : IChatService
                 && representation.GetString() == "sourceText";
         }
         catch (JsonException) { return false; }
+    }
+
+    private static List<EditProposalChangeResponse>? GetTextProposalChanges(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || !IsTextProposal(json)) return null;
+        try
+        {
+            using var payload = JsonDocument.Parse(json);
+            return payload.RootElement.GetProperty("operations").EnumerateArray()
+                .Select(operation => new EditProposalChangeResponse
+                {
+                    Target = operation.GetProperty("expectedText").GetString() ?? string.Empty,
+                    Replacement = operation.GetProperty("replacement").GetString() ?? string.Empty
+                })
+                .ToList();
+        }
+        catch (JsonException) { return null; }
     }
 
     private static StoredOperation? CreateRequestedOperation(JsonElement change, string action, string targetReference,

@@ -43,6 +43,24 @@ function formatTime(iso) {
   return `${date} ${time}`
 }
 
+function getTextProposalChanges(proposal) {
+  if (proposal.changes?.length) return proposal.changes
+
+  const preview = String(proposal.replacement || '')
+  const matches = [...preview.matchAll(/(?:^|\n)Target:\n([\s\S]*?)\nReplacement:\n([\s\S]*?)(?=\n\nTarget:\n|$)/g)]
+  if (matches.length) {
+    return matches.map((match) => ({ target: match[1], replacement: match[2] }))
+  }
+  if (preview.includes('Target:') || preview.includes('Replacement:')) return []
+
+  // Legacy proposals without the formatted source-text preview stored the
+  // actual target and replacement directly in these fields.
+  if (proposal.target && preview) {
+    return [{ target: proposal.target, replacement: preview }]
+  }
+  return []
+}
+
 function findImageNodes(node, result = []) {
   if (!node || typeof node !== 'object') return result
   if (node.type === 'image') result.push(node)
@@ -669,14 +687,22 @@ export default function ChatTab() {
                               <pre className="chat-proposal-block ctx">{m.proposal.target}</pre>
                             )}
                             {m.proposal.replacement && (
-                              <pre className="chat-proposal-block ctx">{m.proposal.replacement}</pre>
+                              m.proposal.replacement.startsWith('Deleted content:') ? (
+                                <><div className="chat-proposal-caption">// DELETED</div><pre className="chat-proposal-block del">{m.proposal.replacement.slice('Deleted content:'.length).trim()}</pre></>
+                              ) : <><div className="chat-proposal-caption">// PROPOSED CHANGES</div><pre className="chat-proposal-block ctx">{m.proposal.replacement}</pre></>
                             )}
                           </>
                         ) : m.proposal.kind === 'text' ? (
                           <>
-                            <div className="chat-proposal-caption">// REVIEW SOURCE CHANGE</div>
-                            {m.proposal.target && <pre className="chat-proposal-block ctx">{m.proposal.target}</pre>}
-                            {m.proposal.replacement && <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>}
+                            {m.proposal.target && <><div className="chat-proposal-caption">// CHANGE SUMMARY</div><pre className="chat-proposal-block ctx">{m.proposal.target}</pre></>}
+                            <div className="chat-proposal-caption">// SOURCE TEXT CHANGE</div>
+                            {getTextProposalChanges(m.proposal).map((change, changeIndex) => (
+                              <div className="chat-proposal-change" key={changeIndex}>
+                                {change.target && <><div className="chat-proposal-caption">// TARGET · TO BE REPLACED</div><pre className="chat-proposal-block del">{change.target}</pre></>}
+                                {change.replacement && <><div className="chat-proposal-caption">// REPLACEMENT</div><pre className="chat-proposal-block add">{change.replacement}</pre></>}
+                              </div>
+                            ))}
+                            {!getTextProposalChanges(m.proposal).length && m.proposal.replacement && <><div className="chat-proposal-caption">// PROPOSED CHANGE</div><pre className="chat-proposal-block ctx">{m.proposal.replacement}</pre></>}
                           </>
                         ) : m.proposal.kind === 'insert' ? (
                           // An insertion: the anchor (if any) is context, not a
@@ -684,31 +710,32 @@ export default function ChatTab() {
                           <>
                             {m.proposal.target && (
                               <>
-                                <div className="chat-proposal-caption">// AFTER THIS PASSAGE</div>
+                                <div className="chat-proposal-caption">// INSERT AFTER THIS</div>
                                 <pre className="chat-proposal-block ctx">{m.proposal.target}</pre>
                               </>
                             )}
                             {m.proposal.replacement && (
-                              <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                              <><div className="chat-proposal-caption">// ADDED</div><pre className="chat-proposal-block add">{m.proposal.replacement}</pre></>
                             )}
                           </>
                         ) : m.proposal.kind === 'replace_node' ? (
                           <>
-                            <div className="chat-proposal-caption">// REPLACEMENT</div>
+                            {m.proposal.target && <><div className="chat-proposal-caption">// REPLACES THIS</div><pre className="chat-proposal-block del">{m.proposal.target}</pre></>}
+                            <div className="chat-proposal-caption">// REPLACED WITH</div>
                             {m.proposal.replacement && (
                               <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
                             )}
                           </>
                         ) : m.proposal.kind === 'insert_node' ? (
                           <>
-                            <div className="chat-proposal-caption">// ADDITION</div>
+                            <div className="chat-proposal-caption">// ADDED</div>
                             {m.proposal.replacement && (
                               <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
                             )}
                           </>
                         ) : m.proposal.kind === 'delete_node' ? (
                           <>
-                            <div className="chat-proposal-caption">// NODE DELETION</div>
+                            <div className="chat-proposal-caption">// DELETED</div>
                             {m.proposal.target && (
                               <pre className="chat-proposal-block del">{m.proposal.target}</pre>
                             )}
@@ -767,13 +794,13 @@ export default function ChatTab() {
                           })()
                         ) : m.proposal.kind === 'change_list_type' ? (
                           <>
-                            <div className="chat-proposal-caption">// LIST FORMAT CHANGE</div>
+                            <div className="chat-proposal-caption">// CURRENT LIST</div>
                             {m.proposal.target && (
                               <pre className="chat-proposal-block ctx">{m.proposal.target}</pre>
                             )}
                             {m.proposal.replacement && (
                               <>
-                                <div className="chat-proposal-caption">// CHANGE TO</div>
+                                <div className="chat-proposal-caption">// CHANGES TO</div>
                                 <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
                               </>
                             )}
@@ -781,10 +808,10 @@ export default function ChatTab() {
                         ) : (
                           <>
                             {m.proposal.target && (
-                              <pre className="chat-proposal-block del">{m.proposal.target}</pre>
+                              <><div className="chat-proposal-caption">// REMOVED</div><pre className="chat-proposal-block del">{m.proposal.target}</pre></>
                             )}
                             {m.proposal.replacement && (
-                              <pre className="chat-proposal-block add">{m.proposal.replacement}</pre>
+                              <><div className="chat-proposal-caption">// REPLACED WITH</div><pre className="chat-proposal-block add">{m.proposal.replacement}</pre></>
                             )}
                           </>
                         )}

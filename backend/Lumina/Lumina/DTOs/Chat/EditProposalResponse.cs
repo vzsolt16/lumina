@@ -12,6 +12,8 @@ public class EditProposalResponse
 
     public string Replacement { get; set; } = string.Empty;
 
+    public List<EditProposalChangeResponse>? Changes { get; set; }
+
     // One of EditProposalStatus ("pending" | "applied" | "rejected").
     public string Status { get; set; } = string.Empty;
 
@@ -27,4 +29,10 @@ public class EditProposalResponse
     public string? ParentId { get; set; }
 
     public string? Placement { get; set; }
+}
+
+public class EditProposalChangeResponse
+{
+    public string Target { get; set; } = string.Empty;
+    public string Replacement { get; set; } = string.Empty;
 }
