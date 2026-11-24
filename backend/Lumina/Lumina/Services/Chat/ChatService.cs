@@ -29,6 +29,8 @@ public class ChatService : IChatService
     private readonly IDocumentContextSelector _contextSelector;
     private readonly ChatRequestBudgeter _requestBudgeter;
     private readonly ILogger<ChatService> _logger;
+    private readonly RagTelemetryService _telemetry;
+    private readonly bool _captureRagSnapshots;
 
     public ChatService(
         IServiceScopeFactory scopeFactory,
@@ -39,6 +41,8 @@ public class ChatService : IChatService
         IGeminiModelCatalog modelCatalog,
         IDocumentContextSelector contextSelector,
         ChatRequestBudgeter requestBudgeter,
+        RagTelemetryService telemetry,
+        IConfiguration configuration,
         ILogger<ChatService> logger)
     {
         _scopeFactory = scopeFactory;
@@ -49,6 +53,8 @@ public class ChatService : IChatService
         _modelCatalog = modelCatalog;
         _contextSelector = contextSelector;
         _requestBudgeter = requestBudgeter;
+        _telemetry = telemetry;
+        _captureRagSnapshots = configuration.GetValue("Rag:Telemetry:CaptureContent", true);
         _logger = logger;
     }
 
@@ -243,6 +249,14 @@ public class ChatService : IChatService
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var requestWatch = System.Diagnostics.Stopwatch.StartNew();
+        var executionId = Guid.NewGuid();
+        var executionStarted = DateTime.UtcNow;
+        var traceId = System.Diagnostics.Activity.Current?.TraceId.ToString();
+        string? failureStage = "request";
+        string? modelForTelemetry = null;
+        int? contentVersionForTelemetry = null;
+        RagContext? contextForTelemetry = null;
+        var generationWatch = new System.Diagnostics.Stopwatch();
         _logger.LogInformation("Chat request received for conversation {ConversationId}; question length {QuestionLength}", conversationId, question.Length);
         Guid documentId;
         string fileName;
@@ -276,7 +290,9 @@ public class ChatService : IChatService
             sourceTextRepresentation = DocumentFormatDescriptor.UsesCanonicalSourceText(
                 conversation.Document.FileName, conversation.Document.ContentJson);
             contentVersion = conversation.Document.ContentVersion;
+            contentVersionForTelemetry = contentVersion;
             resolvedModelId = _modelCatalog.Resolve(modelId ?? conversation.ModelId).Id;
+            modelForTelemetry = resolvedModelId;
             metrics.AddModel(resolvedModelId);
             if (modelId is not null && conversation.ModelId != resolvedModelId)
             {
@@ -298,8 +314,31 @@ public class ChatService : IChatService
         var baseline = BuildMessages(fileName, new RagContext("none", "", [], 0), history, question, sourceTextRepresentation);
         var evidenceBudget = Math.Max(0, _requestBudgeter.AvailableInputTokens(resolvedModelId)
             - ChatRequestBudgeter.EstimateTokens(baseline, tools) - 128);
-        selectedContext = await _contextSelector.SelectAsync(
-            documentId, userId, question, history.Select(h => h.Content).ToArray(), cancellationToken, evidenceBudget);
+        failureStage = "retrieval";
+        var retrievalWatch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            selectedContext = await _contextSelector.SelectAsync(
+                documentId, userId, question, history.Select(h => h.Content).ToArray(), cancellationToken, evidenceBudget);
+        }
+        catch (Exception ex)
+        {
+            retrievalWatch.Stop();
+            await _telemetry.PersistAsync(new Lumina.Models.RagExecution
+            {
+                Id = executionId, UserId = userId, ConversationId = conversationId, DocumentId = documentId,
+                TraceId = traceId, StartedAt = executionStarted, DurationMs = requestWatch.ElapsedMilliseconds,
+                Status = cancellationToken.IsCancellationRequested ? "Cancelled" : "Failed", Query = question,
+                ModelId = modelForTelemetry, DocumentVersion = contentVersionForTelemetry,
+                RetrievalDurationMs = (int)retrievalWatch.ElapsedMilliseconds,
+                FailureStage = "retrieval", ErrorType = cancellationToken.IsCancellationRequested ? null : ex.GetType().Name
+            });
+            throw;
+        }
+        retrievalWatch.Stop();
+        contextForTelemetry = selectedContext;
+        if (sourceTextRepresentation && selectedContext.Mode == "full" && selectedContext.Complete)
+            tools.RemoveAll(tool => tool.Name == GetDocumentTextTool.Name);
         _logger.LogDebug("Selected {ContextMode} context for document {DocumentId} version {Version}; approximate context tokens {ContextTokens}; outcome {Outcome}; complete {Complete}",
             selectedContext.Mode, documentId, contentVersion, selectedContext.ApproxTokens, selectedContext.Outcome, selectedContext.Complete);
         var messages = BuildMessages(fileName, selectedContext, history, question, sourceTextRepresentation);
@@ -325,14 +364,35 @@ public class ChatService : IChatService
         // confirmation if the model produces no visible reply.
         var toolMutatedDoc = false;
         var turnLimitReached = false;
+        var toolRetrievals = new List<ToolRetrievalTelemetry>();
+        var retrievalOperationOrder = 0;
 
         try
         {
+            failureStage = "generation";
+            generationWatch.Start();
             async Task<ToolExecutionResult> ExecuteForOrchestratorAsync(
                 AiToolCall call, CancellationToken ct)
             {
-                var toolExecution = await ExecuteToolAsync(
-                    call, documentId, userId, contentVersion, ct);
+                var isRetrievalTool = IsRetrievalTool(call.Name);
+                var toolWatch = System.Diagnostics.Stopwatch.StartNew();
+                ChatToolExecution toolExecution;
+                try
+                {
+                    toolExecution = await ExecuteToolAsync(call, documentId, userId, contentVersion, ct);
+                }
+                catch (Exception ex)
+                {
+                    if (isRetrievalTool)
+                        toolRetrievals.Add(CreateToolRetrievalTelemetry(
+                            ++retrievalOperationOrder, call, null, ex is OperationCanceledException ? "Cancelled" : "Failed",
+                            toolWatch.ElapsedMilliseconds));
+                    throw;
+                }
+                if (isRetrievalTool)
+                    toolRetrievals.Add(CreateToolRetrievalTelemetry(
+                        ++retrievalOperationOrder, call, toolExecution, toolExecution.Status.ToString(),
+                        toolWatch.ElapsedMilliseconds));
                 var resultText = toolExecution.ResultText;
                 var executionStatus = toolExecution.Status;
                 var updatedDoc = toolExecution.UpdatedDocument;
@@ -395,6 +455,14 @@ public class ChatService : IChatService
                         break;
                     case ChatOrchestrationEventKind.ToolCompleted:
                         var completedCall = orchestrationEvent.ToolCall!;
+                        if (IsRetrievalTool(completedCall.Name)
+                            && orchestrationEvent.ToolResult?.Status == ToolExecutionStatus.InvalidArguments)
+                        {
+                            toolRetrievals.Add(CreateToolRetrievalTelemetry(
+                                ++retrievalOperationOrder, completedCall,
+                                new ChatToolExecution(ToolExecutionStatus.InvalidArguments, orchestrationEvent.ToolResult.Message),
+                                ToolExecutionStatus.InvalidArguments.ToString(), 0));
+                        }
                         var label = ToolActivityLabel(completedCall);
                         yield return ChatStreamEvent.ForTool(completedCall.Name, label, ChatStreamEvent.ToolDone);
                         if (orchestrationEvent.ToolResult?.Metadata is ToolExecutionMetadata metadata)
@@ -438,6 +506,7 @@ public class ChatService : IChatService
                 yield return ChatStreamEvent.ForSources(selectedContext.Sources);
 
             completed = true;
+            failureStage = null;
         }
         finally
         {
@@ -447,6 +516,76 @@ public class ChatService : IChatService
                 _logger.LogInformation("Chat response streaming cancelled for conversation {ConversationId} document {DocumentId} after {DurationMs} ms", conversationId, documentId, requestWatch.ElapsedMilliseconds);
             else
                 _logger.LogWarning("Chat response streaming interrupted for conversation {ConversationId} document {DocumentId} after {DurationMs} ms", conversationId, documentId, requestWatch.ElapsedMilliseconds);
+            generationWatch.Stop();
+            var sources = contextForTelemetry?.Sources ?? [];
+            var toolSources = toolRetrievals.SelectMany(item => item.Sources).ToArray();
+            var uniqueToolSourceCount = toolSources
+                .DistinctBy(source => (source.DocumentId, source.ChunkIndex, string.Join("|", source.NodeIds)))
+                .Count();
+            var status = completed ? "Completed" : cancellationToken.IsCancellationRequested ? "Cancelled" : "Failed";
+            await _telemetry.PersistAsync(new Lumina.Models.RagExecution
+            {
+                Id = executionId, UserId = userId, ConversationId = conversationId,
+                DocumentId = metrics.DocumentId ?? Guid.Empty, TraceId = traceId,
+                StartedAt = executionStarted, DurationMs = requestWatch.ElapsedMilliseconds,
+                Status = status, Query = question, ModelId = modelForTelemetry,
+                DocumentVersion = contentVersionForTelemetry,
+                RetrievalDurationMs = contextForTelemetry is null ? null : (int)retrievalWatch.ElapsedMilliseconds,
+                GenerationDurationMs = generationWatch.ElapsedMilliseconds > 0 ? (int)generationWatch.ElapsedMilliseconds : null,
+                InputTokens = metrics.TotalInputTokens > 0 ? metrics.TotalInputTokens : null,
+                OutputTokens = metrics.TotalOutputTokens > 0 ? metrics.TotalOutputTokens : null,
+                Answer = !_captureRagSnapshots || visible.Length == 0 ? null : visible.ToString(),
+                FailureStage = completed ? null : failureStage,
+                ErrorType = completed || cancellationToken.IsCancellationRequested ? null : "RequestFailed",
+                RetrievedChunkCount = sources.Count + toolSources.Length,
+                ContextJson = RagTelemetryService.SerializeDetails(new
+                {
+                    mode = contextForTelemetry?.Mode,
+                    outcome = contextForTelemetry?.Outcome.ToString(),
+                    complete = contextForTelemetry?.Complete,
+                    documentVersion = contentVersionForTelemetry,
+                    approximateTokens = contextForTelemetry?.ApproxTokens,
+                    assembledContext = !_captureRagSnapshots || string.IsNullOrWhiteSpace(contextForTelemetry?.Text) ? null
+                        : $"--- DOCUMENT CONTEXT ({contextForTelemetry.Mode}): {fileName} ---\n{contextForTelemetry.Text}\n--- END DOCUMENT ---",
+                    initialContext = new
+                    {
+                        strategy = GetRetrievalStrategy(contextForTelemetry),
+                        outcome = contextForTelemetry?.Outcome.ToString(),
+                        complete = contextForTelemetry?.Complete,
+                        documentVersion = contentVersionForTelemetry,
+                        approximateContextTokens = contextForTelemetry?.ApproxTokens,
+                        retrievedChunkCount = sources.Count,
+                        candidateCount = contextForTelemetry?.CandidateCount,
+                        acceptedCandidateCount = contextForTelemetry?.AcceptedCandidateCount,
+                        rejectedCandidateCount = contextForTelemetry?.RejectedCandidateCount,
+                        sources = sources.Select(source => new { source.DocumentId, source.DocumentName, source.Heading,
+                            source.ChunkIndex, source.DocumentVersion, source.RelevanceScore, source.RetrievalMethod, source.NodeIds })
+                    },
+                    toolRetrievals = toolRetrievals.Select(item => new
+                    {
+                        item.Order, item.ToolName, item.Strategy, item.Query, item.Arguments,
+                        item.Outcome, item.DurationMs, item.CandidateCount, item.AcceptedCandidateCount,
+                        item.RejectedCandidateCount, item.ReturnedSourceCount, item.Complete, item.Limitation,
+                        item.Sources, item.Passages, item.Result
+                    }),
+                    sourceAccounting = new
+                    {
+                        initialContextSources = sources.Count,
+                        toolRetrievedSources = toolSources.Length,
+                        uniqueToolRetrievedSources = uniqueToolSourceCount,
+                        toolRetrievedPassages = toolRetrievals.Sum(item => item.AcceptedCandidateCount ?? 0),
+                        attachedChatSources = sources.Count,
+                        finalAnswerCitations = (int?)null
+                    },
+                    providerRequests = metrics.ProviderRequestsUsage,
+                    cumulativeUsage = new
+                    {
+                        inputTokens = metrics.TotalInputTokens,
+                        outputTokens = metrics.TotalOutputTokens,
+                        totalTokens = metrics.TotalTokens
+                    }
+                })
+            });
             // Persist the exchange only when the answer finished cleanly. On an
             // error or a client disconnect mid-stream we save nothing, so history
             // never contains a truncated reply (which would poison later prompts).
@@ -1098,7 +1237,69 @@ public class ChatService : IChatService
         string ResultText,
         DocumentDetailResponse? UpdatedDocument = null,
         ProposalDraft? Proposal = null,
-        bool StopAfterTurn = false);
+        bool StopAfterTurn = false,
+        RagContext? RetrievalContext = null);
+
+    private sealed record ToolRetrievalTelemetry(
+        int Order,
+        string ToolName,
+        string Strategy,
+        string Outcome,
+        long DurationMs,
+        string? Query,
+        string? Arguments,
+        int? CandidateCount,
+        int? AcceptedCandidateCount,
+        int? RejectedCandidateCount,
+        int ReturnedSourceCount,
+        bool? Complete,
+        string? Limitation,
+        IReadOnlyList<ChatSource> Sources,
+        IReadOnlyList<string> Passages,
+        string? Result);
+
+    private static bool IsRetrievalTool(string name) => name is
+        "find_document_section" or "get_document_section" or "get_document_node" or
+        "get_document_structure" or "get_document_text" or "search_document";
+
+    private static string? GetRetrievalStrategy(RagContext? context) => context?.Mode switch
+    {
+        "rag" => "semantic",
+        "full" => "full",
+        "structural" => "structural",
+        "pending" => "unavailable",
+        "failed" => "semantic",
+        "none" => "none",
+        var mode => mode
+    };
+
+    private ToolRetrievalTelemetry CreateToolRetrievalTelemetry(
+        int order, AiToolCall call, ChatToolExecution? result, string fallbackOutcome, long durationMs)
+    {
+        var context = result?.RetrievalContext;
+        var sources = context?.Sources ?? [];
+        var strategy = call.Name switch
+        {
+            "search_document" => "semantic",
+            "find_document_section" or "get_document_section" => "structural",
+            "get_document_node" => "structural_node",
+            "get_document_structure" => "structure",
+            "get_document_text" => "canonical_text",
+            _ => "unknown"
+        };
+        var query = call.Name == "search_document" && TryGetStringArg(call, "query", out var value) ? value : null;
+        var passages = _captureRagSnapshots && context is not null && sources.Count > 0
+            ? context.Text.Split("\n\n", StringSplitOptions.RemoveEmptyEntries)
+            : [];
+        return new ToolRetrievalTelemetry(
+            order, call.Name, strategy, context?.Outcome.ToString() ?? fallbackOutcome, durationMs,
+            _captureRagSnapshots ? query : null,
+            _captureRagSnapshots && call.Arguments.ValueKind == JsonValueKind.Object ? call.Arguments.GetRawText() : null,
+            context?.CandidateCount, context?.AcceptedCandidateCount,
+            context?.RejectedCandidateCount, sources.Count, context?.Complete, context?.Limitation,
+            sources, passages,
+            _captureRagSnapshots && context is null ? result?.ResultText : null);
+    }
 
     private static ChatToolExecution ToolSucceeded(
         string text, DocumentDetailResponse? document = null, ProposalDraft? proposal = null, bool stopAfterTurn = false) =>
@@ -1607,7 +1808,7 @@ public class ChatService : IChatService
         if (!TryGetStringArg(call, "query", out var query) || string.IsNullOrWhiteSpace(query))
             return ToolInvalid("A semantic search query is required.");
         var search = await _contextSelector.SelectAsync(documentId, userId, query.Trim(), [], cancellationToken, 2500, forceSemantic: true);
-        return search.Outcome switch
+        var searchResult = search.Outcome switch
         {
             RetrievalOutcome.IndexStale or RetrievalOutcome.Indexing or RetrievalOutcome.IndexUnavailable =>
                 ToolNeedsClarification($"Search is unavailable for the current document version ({search.Outcome}). Retrieve a current section or ask the user for a narrower reference. {search.Limitation}", ToolExecutionStatus.InsufficientContext),
@@ -1617,6 +1818,7 @@ public class ChatService : IChatService
                 retrieval_method = "semantic_discovery_only", complete = search.Complete, limitation = search.Limitation,
                 passages = search.Sources.Select((source, i) => new { text = i < search.Text.Split("\n\n", StringSplitOptions.None).Length ? search.Text.Split("\n\n", StringSplitOptions.None)[i] : "", source.HeadingPath, source.NodeIds, source.RelevanceScore }) }))
         };
+        return searchResult with { RetrievalContext = search };
     }
 
     private async Task<ChatToolExecution> ExecuteProposalToolAsync(
@@ -2320,6 +2522,8 @@ public class ChatService : IChatService
             "— but only if they are in the style of traditional kaomojis and not standard emojis.");
         sb.AppendLine(
             "- Questions about the document's subject: answer from the supplied document context.");
+        if (context.Mode == "full" && context.Complete)
+            sb.AppendLine("A complete current copy of the document is supplied below. Prefer answering directly from that context. Avoid retrieval calls that merely reread the supplied text. Use targeted search when it provides meaningful additional value, and continue retrieval when the supplied context does not answer the question. Avoid repeating searches that do not add distinct evidence.");
         if (Path.GetExtension(fileName).ToLowerInvariant() is ".pdf" or ".docx")
             sb.AppendLine("The document content is extracted from the original file. Any approved edits affect Lumina's extracted editable content only; they do not modify or reconstruct the original PDF/DOCX file.");
         if (context.Mode == "rag")
@@ -2346,7 +2550,9 @@ public class ChatService : IChatService
         sb.AppendLine(
             "When the user explicitly asks you to change the document, call the matching tool " +
             "instead of describing the change or writing the edited text in your reply:");
-        if (sourceTextRepresentation)
+        if (sourceTextRepresentation && context.Mode == "full" && context.Complete)
+            sb.AppendLine("This document uses canonical source text. Preserve its line endings, indentation, and syntax. The complete current source is already supplied above; do not call get_document_text merely to reread it. Use get_document_structure when heading or line locations are useful, and use semantic search only when it adds targeted evidence. Propose edits with replace_text and an exact unique passage, or replace_document for an explicitly requested full rewrite. Do not use ProseMirror node IDs.");
+        else if (sourceTextRepresentation)
             sb.AppendLine("This document uses canonical source text. Preserve its line endings, indentation, and syntax. Use get_document_structure to locate Markdown headings and get_document_text with bounded line and token ranges to inspect current source; semantic search only discovers likely passages. Propose edits with replace_text and an exact unique passage, or replace_document for an explicitly requested full rewrite. Do not use ProseMirror node IDs.");
         else
             sb.AppendLine(

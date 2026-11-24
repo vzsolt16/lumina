@@ -1,0 +1,21 @@
+.rag-inspector {
+  max-width: 1180px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  color: var(--text-primary, #f4f1ec);
+}
+.rag-inspector section { display: flex; gap: 1rem; margin: 1.25rem 0; }
+.rag-inspector label { display: grid; gap: .35rem; }
+.rag-inspector table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+.rag-inspector th, .rag-inspector td { text-align: left; padding: .7rem; border-bottom: 1px solid rgba(255,255,255,.12); }
+.rag-inspector tbody tr { cursor: pointer; }
+.rag-inspector tbody tr:hover { background: rgba(255,255,255,.06); }
+.rag-inspector article { margin-top: 2rem; }
+.rag-inspector details { border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: .8rem 1rem; margin: .7rem 0; }
+.rag-inspector summary { cursor: pointer; font-weight: 650; }
+.rag-inspector pre { max-height: 30rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(0,0,0,.2); padding: 1rem; border-radius: 6px; }
+@media (max-width: 760px) {
+  .rag-inspector { padding: 1rem; overflow-x: auto; }
+  .rag-inspector section { flex-direction: column; }
+  .rag-inspector table { min-width: 680px; }
+}

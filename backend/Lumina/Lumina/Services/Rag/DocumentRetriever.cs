@@ -5,7 +5,8 @@ namespace Lumina.Services.Rag;
 
 public enum RetrievalOutcome { Complete, Partial, NoResults, IndexUnavailable, IndexStale, Indexing, Failed }
 public sealed record RagContext(string Mode, string Text, IReadOnlyList<Lumina.DTOs.Chat.ChatSource> Sources, int ApproxTokens,
-    RetrievalOutcome Outcome = RetrievalOutcome.Complete, bool Complete = true, string? Limitation = null);
+    RetrievalOutcome Outcome = RetrievalOutcome.Complete, bool Complete = true, string? Limitation = null,
+    int? CandidateCount = null, int? AcceptedCandidateCount = null, int? RejectedCandidateCount = null);
 
 public interface IDocumentContextSelector
 {
@@ -129,7 +130,8 @@ public sealed class DocumentContextSelector(IServiceScopeFactory scopes, IEmbedd
         var complete = selected.Count == matches.Count && selected.Count > 0;
         return new("rag", text, sources, reserved + DocumentChunker.CountTokens(text),
             selected.Count == 0 ? RetrievalOutcome.NoResults : complete ? RetrievalOutcome.Complete : RetrievalOutcome.Partial,
-            complete, complete ? null : "Only some matching indexed passages fit the retrieval budget or available current matches.");
+            complete, complete ? null : "Only some matching indexed passages fit the retrieval budget or available current matches.",
+            matches.Count, selected.Count, Math.Max(0, matches.Count - selected.Count));
     }
 
     private static bool HighlyOverlaps(string a, string b)

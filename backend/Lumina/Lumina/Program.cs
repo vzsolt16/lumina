@@ -147,6 +147,7 @@ builder.Services.AddSingleton<IDocumentChunker, DocumentChunker>();
 builder.Services.AddSingleton<IDocumentIndexScheduler, DocumentIndexScheduler>();
 builder.Services.AddScoped<IDocumentIndexService, DocumentIndexService>();
 builder.Services.AddScoped<IDocumentContextSelector, DocumentContextSelector>();
+builder.Services.AddScoped<RagTelemetryService>();
 var ollamaEmbeddingUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434/";
 builder.Services.AddHttpClient<IEmbeddingService, OllamaEmbeddingService>(client =>
 {

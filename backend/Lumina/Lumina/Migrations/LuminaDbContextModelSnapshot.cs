@@ -469,6 +469,84 @@ namespace Lumina.Migrations
                     b.ToTable("QuizQuestions");
                 });
 
+            modelBuilder.Entity("Lumina.Models.RagExecution", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Answer")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContextJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("DocumentVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("DurationMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ErrorType")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FailureStage")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("GenerationDurationMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("InputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ModelId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("OutputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Query")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RetrievalDurationMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RetrievedChunkCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TraceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("UserId", "StartedAt");
+
+                    b.HasIndex("UserId", "ConversationId", "StartedAt");
+
+                    b.ToTable("RagExecutions");
+                });
+
             modelBuilder.Entity("Lumina.Models.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -749,6 +827,27 @@ namespace Lumina.Migrations
                         .IsRequired();
 
                     b.Navigation("Quiz");
+                });
+
+            modelBuilder.Entity("Lumina.Models.RagExecution", b =>
+                {
+                    b.HasOne("Lumina.Models.ChatConversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Lumina.Models.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Lumina.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Lumina.Models.RefreshToken", b =>

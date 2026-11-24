@@ -28,6 +28,9 @@ export default function Nav({ showSectionLinks = true }) {
       <div className="nav-cta">
         {user ? (
           <>
+            <button className="btn-nav ghost" onClick={() => navigate('/rag-inspector')}>
+              RAG Inspector
+            </button>
             <button className="btn-nav ghost" onClick={() => navigate('/studio')}>
               Studio
             </button>

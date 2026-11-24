@@ -134,6 +134,12 @@ public sealed class ChatServiceOrchestrationTests
         Assert.Equal(4, (int)summary.Properties["TotalInputTokens"]!);
         Assert.Equal(2, (int)summary.Properties["TotalOutputTokens"]!);
         Assert.Equal(6, (int)summary.Properties["TotalTokens"]!);
+        var failedExecution = await verify.ServiceProvider.GetRequiredService<LuminaDbContext>()
+            .RagExecutions.SingleAsync(x => x.ConversationId == conversationId);
+        Assert.Equal("Failed", failedExecution.Status);
+        Assert.Equal("generation", failedExecution.FailureStage);
+        Assert.Equal(4, failedExecution.InputTokens);
+        Assert.Null(failedExecution.Answer);
     }
 
     [Fact]
@@ -160,10 +166,126 @@ public sealed class ChatServiceOrchestrationTests
         Assert.Equal(1, (int)summary.Properties["ToolExecutions"]!);
         Assert.Equal("Completed", summary.Properties["Outcome"]);
 
+        using (var verify = provider.CreateScope())
+        {
+            var execution = await verify.ServiceProvider.GetRequiredService<LuminaDbContext>()
+                .RagExecutions.SingleAsync(x => x.ConversationId == conversationId);
+            Assert.Equal("Completed", execution.Status);
+            Assert.Equal("Rename and finish", execution.Query);
+            Assert.Equal(15, execution.InputTokens);
+            Assert.Contains("Original content", execution.ContextJson);
+            Assert.Equal("Done", execution.Answer);
+        }
+
         var usage = logs.Entries.Where(entry => entry.Message.StartsWith("Chat provider usage.", StringComparison.Ordinal)).ToArray();
         Assert.Equal(2, usage.Length);
         Assert.Equal(new[] { 1, 2 }, usage.Select(entry => (int)entry.Properties["RequestNumber"]!).ToArray());
         Assert.Equal(new[] { 1, 0 }, usage.Select(entry => (int)entry.Properties["ToolCallCount"]!).ToArray());
+    }
+
+    [Fact]
+    public async Task FullDocumentAndMultipleSemanticToolSearchesAreRecordedSeparatelyAndInOrder()
+    {
+        var ai = new ScriptedAiService([
+            [new AiChatDelta(null, [Call("search_document", "{\"query\":\"island ferry crossing\"}")], new AiUsageMetadata(11, 1, 12))],
+            [new AiChatDelta(null, [Call("search_document", "{\"query\":\"Calder Reach longest crossing\"}")], new AiUsageMetadata(17, 1, 18))],
+            [new AiChatDelta("Sundergrave.", null, new AiUsageMetadata(23, 2, 25))]
+        ]);
+        await using var provider = CreateProvider(ai, selector: new PresetContextSelector(
+            new RagContext("full", "Complete document text", [], 25),
+            new RagContext("rag", "Passage one\n\nPassage two\n\nPassage three\n\nPassage four\n\nPassage five",
+                Enumerable.Range(0, 5).Select(index => new Lumina.DTOs.Chat.ChatSource(
+                    Guid.Empty, "Notes.md", "Ferries", index, [$"node-{index}"], ["Ferries"], 1,
+                    "semantic", 0.9f - index / 100f)).ToArray(), 25,
+                RetrievalOutcome.Complete, true, null, 5, 5, 0)));
+        var (documentId, conversationId, userId) = await Seed(provider);
+
+        using (var scope = provider.CreateScope())
+            await Collect(scope.ServiceProvider.GetRequiredService<IChatService>()
+                .StreamAnswerAsync(conversationId, userId, "Which island has the longest ferry crossing?", null));
+
+        using var verify = provider.CreateScope();
+        var execution = await verify.ServiceProvider.GetRequiredService<LuminaDbContext>()
+            .RagExecutions.SingleAsync(item => item.ConversationId == conversationId);
+        using var details = JsonDocument.Parse(execution.ContextJson!);
+        var root = details.RootElement;
+        Assert.Equal("full", root.GetProperty("initialContext").GetProperty("strategy").GetString());
+        Assert.Equal(0, root.GetProperty("initialContext").GetProperty("retrievedChunkCount").GetInt32());
+        var operations = root.GetProperty("toolRetrievals").EnumerateArray().ToArray();
+        Assert.Equal(2, operations.Length);
+        Assert.Equal(new[] { 1, 2 }, operations.Select(item => item.GetProperty("order").GetInt32()).ToArray());
+        Assert.Equal(new[] { "island ferry crossing", "Calder Reach longest crossing" },
+            operations.Select(item => item.GetProperty("query").GetString()).ToArray());
+        Assert.All(operations, item =>
+        {
+            Assert.Equal("semantic", item.GetProperty("strategy").GetString());
+            Assert.Equal(5, item.GetProperty("acceptedCandidateCount").GetInt32());
+            Assert.Equal(5, item.GetProperty("sources").GetArrayLength());
+        });
+        Assert.Equal(10, root.GetProperty("sourceAccounting").GetProperty("toolRetrievedPassages").GetInt32());
+        Assert.Equal(10, execution.RetrievedChunkCount);
+        Assert.Equal(3, root.GetProperty("providerRequests").GetArrayLength());
+        Assert.Equal(11, root.GetProperty("providerRequests")[0].GetProperty("inputTokens").GetInt32());
+        Assert.Equal("search_document", root.GetProperty("providerRequests")[0].GetProperty("toolCalls")[0].GetString());
+        Assert.Equal(documentId, execution.DocumentId);
+    }
+
+    [Fact]
+    public async Task FailedToolSemanticRetrievalIsCaptured()
+    {
+        var ai = new ScriptedAiService([
+            [new AiChatDelta(null, [Call("search_document", "{\"query\":\"missing evidence\"}")])],
+            [new AiChatDelta("I could not retrieve it.", null)]
+        ]);
+        await using var provider = CreateProvider(ai, selector: new PresetContextSelector(
+            new RagContext("full", "Complete document", [], 10),
+            new RagContext("failed", "", [], 0, RetrievalOutcome.Failed, false, "Vector retrieval failed.", 5, 0, 5)));
+        var (_, conversationId, userId) = await Seed(provider);
+        using (var scope = provider.CreateScope())
+            await Collect(scope.ServiceProvider.GetRequiredService<IChatService>()
+                .StreamAnswerAsync(conversationId, userId, "Find it", null));
+
+        using var verify = provider.CreateScope();
+        var execution = await verify.ServiceProvider.GetRequiredService<LuminaDbContext>()
+            .RagExecutions.SingleAsync(item => item.ConversationId == conversationId);
+        using var details = JsonDocument.Parse(execution.ContextJson!);
+        var operation = Assert.Single(details.RootElement.GetProperty("toolRetrievals").EnumerateArray());
+        Assert.Equal("Failed", operation.GetProperty("outcome").GetString());
+        Assert.Equal(5, operation.GetProperty("candidateCount").GetInt32());
+        Assert.Equal(0, operation.GetProperty("acceptedCandidateCount").GetInt32());
+        Assert.Equal(0, operation.GetProperty("returnedSourceCount").GetInt32());
+        Assert.Equal(0, execution.RetrievedChunkCount);
+    }
+
+    [Fact]
+    public async Task FullCompleteSourceTextHidesRedundantTextToolButKeepsPolicyAndSearch()
+    {
+        var ai = new ScriptedAiService([[new AiChatDelta("Answered from context.", null)]]);
+        await using var provider = CreateProvider(ai);
+        var (_, conversationId, userId) = await Seed(provider, "Complete source text", sourceText: true);
+        using (var scope = provider.CreateScope())
+            await Collect(scope.ServiceProvider.GetRequiredService<IChatService>()
+                .StreamAnswerAsync(conversationId, userId, "A question", null));
+
+        var declaredNames = ai.ToolRequests.Single().Select(tool => tool.Name).ToArray();
+        Assert.DoesNotContain("get_document_text", declaredNames);
+        Assert.Contains("search_document", declaredNames);
+        Assert.Contains("A complete current copy of the document is supplied below", ai.Requests.Single().Single(message => message.Role == "system").Content);
+        Assert.Contains("do not call get_document_text merely to reread it", ai.Requests.Single().Single(message => message.Role == "system").Content);
+    }
+
+    [Fact]
+    public async Task PartialSourceTextRetainsDocumentTextTool()
+    {
+        var ai = new ScriptedAiService([[new AiChatDelta("Answered from the supplied section.", null)]]);
+        var partial = new RagContext("rag", "Relevant passage", [], 15, RetrievalOutcome.Partial, false, "Other content omitted.");
+        await using var provider = CreateProvider(ai, selector: new PresetContextSelector(partial, partial));
+        var (_, conversationId, userId) = await Seed(provider, "Long source text", sourceText: true);
+        using (var scope = provider.CreateScope())
+            await Collect(scope.ServiceProvider.GetRequiredService<IChatService>()
+                .StreamAnswerAsync(conversationId, userId, "A question", null));
+
+        Assert.Contains(ai.ToolRequests.Single(), tool => tool.Name == "get_document_text");
     }
 
     [Fact]
@@ -269,20 +391,23 @@ public sealed class ChatServiceOrchestrationTests
             .Documents.Where(d => d.Id == documentId).Select(d => d.Content).SingleAsync());
     }
 
-    private static ServiceProvider CreateProvider(IAiService ai, CapturingLoggerProvider? logs = null)
+    private static ServiceProvider CreateProvider(IAiService ai, CapturingLoggerProvider? logs = null,
+        IDocumentContextSelector? selector = null, bool captureContent = true)
     {
         var services = new ServiceCollection();
         services.AddLogging(builder => { if (logs is not null) builder.AddProvider(logs); });
-        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["Rag:Telemetry:CaptureContent"] = captureContent.ToString() }).Build());
         var databaseName = Guid.NewGuid().ToString();
         services.AddDbContext<LuminaDbContext>(options => options.UseInMemoryDatabase(databaseName));
         services.AddSingleton<IAiService>(ai);
         services.AddSingleton<IDocumentContentConverter, ProseMirrorDocumentConverter>();
         services.AddSingleton<IDocumentContextBuilder, DocumentContextBuilder>();
-        services.AddSingleton<IDocumentContextSelector, FixedContextSelector>();
+        services.AddSingleton<IDocumentContextSelector>(selector ?? new FixedContextSelector());
         services.AddSingleton<IGeminiModelCatalog, TestModelCatalog>();
         services.AddSingleton<ChatRequestBudgeter>();
         services.AddScoped<IDocumentEditorService, DocumentEditorService>();
+        services.AddScoped<RagTelemetryService>();
         services.AddScoped<ChatOrchestrator>();
         services.AddScoped<IChatService, ChatService>();
         return services.BuildServiceProvider();
@@ -330,6 +455,19 @@ public sealed class ChatServiceOrchestrationTests
             IReadOnlyList<string> history, CancellationToken ct, int? evidenceBudgetTokens = null, bool forceSemantic = false) => Task.FromResult(new RagContext("full", "Original content", [], 5));
     }
 
+    private sealed class PresetContextSelector(RagContext initial, RagContext semantic) : IDocumentContextSelector
+    {
+        public Task<RagContext> SelectAsync(Guid documentId, Guid userId, string question,
+            IReadOnlyList<string> history, CancellationToken ct, int? evidenceBudgetTokens = null, bool forceSemantic = false)
+        {
+            var selected = forceSemantic ? semantic : initial;
+            return Task.FromResult(selected with
+            {
+                Sources = selected.Sources.Select(source => source with { DocumentId = documentId }).ToArray()
+            });
+        }
+    }
+
     private sealed class TestModelCatalog : IGeminiModelCatalog
     {
         private static readonly GeminiModelDefinition Model = new("gemini-flash", "Test", "test-model");
@@ -343,6 +481,7 @@ public sealed class ChatServiceOrchestrationTests
     {
         private int _index;
         public List<AiMessage[]> Requests { get; } = [];
+        public List<IReadOnlyList<AiTool>> ToolRequests { get; } = [];
         public TaskCompletionSource RequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<string> GenerateAsync(string prompt, JsonElement? schema = null, int maxTokens = 2000, string? modelId = null) => throw new NotSupportedException();
         public IAsyncEnumerable<string> GenerateStreamAsync(string prompt, int maxTokens = 2000, CancellationToken cancellationToken = default, string? modelId = null) => throw new NotSupportedException();
@@ -357,6 +496,7 @@ public sealed class ChatServiceOrchestrationTests
                 throw new InvalidOperationException("provider failed");
             }
             Requests.Add(messages.ToArray());
+            ToolRequests.Add(tools.ToArray());
             if (_index >= turns.Count) yield break;
             foreach (var delta in turns[_index++])
             {

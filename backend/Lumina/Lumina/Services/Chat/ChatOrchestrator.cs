@@ -142,7 +142,7 @@ public sealed class ChatOrchestrator(IAiService aiService, ILogger<ChatOrchestra
             }
             finally
             {
-                metrics?.RecordUsage(requestUsage);
+                metrics?.RecordUsage(requestNumber, requestUsage, calls.Select(call => call.Name).ToArray());
                 if (requestUsage is not null)
                     logger.LogInformation("Chat provider usage. ConversationId={ConversationId} ModelId={ModelId} RequestNumber={RequestNumber} InputTokens={InputTokens} OutputTokens={OutputTokens} TotalTokens={TotalTokens} ToolCallCount={ToolCallCount}",
                         conversationId, modelId, requestNumber, requestUsage.InputTokens, requestUsage.OutputTokens,

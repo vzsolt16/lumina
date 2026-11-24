@@ -34,6 +34,8 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
 
     public DbSet<DocumentAsset> DocumentAssets => Set<DocumentAsset>();
 
+    public DbSet<RagExecution> RagExecutions => Set<RagExecution>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -162,5 +164,11 @@ public class LuminaDbContext : IdentityDbContext<ApplicationUser, IdentityRole<G
 
         modelBuilder.Entity<ChatMessage>()
             .Property(m => m.ProposalContentVersion);
+
+        modelBuilder.Entity<RagExecution>().HasIndex(x => new { x.UserId, x.StartedAt });
+        modelBuilder.Entity<RagExecution>().HasIndex(x => new { x.UserId, x.ConversationId, x.StartedAt });
+        modelBuilder.Entity<RagExecution>().HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<RagExecution>().HasOne<ChatConversation>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<RagExecution>().HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
     }
 }

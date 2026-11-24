@@ -10,6 +10,7 @@ import QuizTab from './pages/document/QuizTab.jsx'
 import ChatTab from './pages/document/ChatTab.jsx'
 import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
+import RagInspector from './pages/RagInspector.jsx'
 
 export default function App() {
   // Landing + auth run their own full-bleed "sleeve" chrome; the data-stream
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/rag-inspector" element={<ProtectedRoute><RagInspector /></ProtectedRoute>} />
           <Route
             path="/studio"
             element={

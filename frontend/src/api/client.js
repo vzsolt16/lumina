@@ -306,6 +306,15 @@ export function getAiModels() {
   return request('/api/ai/models')
 }
 
+export function getRagExecutions(filters = {}) {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== '' && value != null))
+  return request(`/api/rag/executions?${query}`)
+}
+
+export function getRagExecution(id) {
+  return request(`/api/rag/executions/${id}`)
+}
+
 /**
  * List a document's chat conversations, most-recently-updated first.
  * @returns {Promise<Array<{ id, title, modelId, createdAt, updatedAt }>>}
