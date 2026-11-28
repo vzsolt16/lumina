@@ -34,17 +34,41 @@ public sealed class DocumentContextSelector(IServiceScopeFactory scopes, IEmbedd
         // is included in the estimate, using the same word/token approximation.
         var reserved = 5200 + history.Sum(DocumentChunker.CountTokens) + DocumentChunker.CountTokens(question);
         var fullText = doc.Content;
-        var fullTokens = DocumentChunker.CountTokens(fullText) + reserved;
+        var documentTokens = DocumentChunker.CountTokens(fullText);
+        var fullTokens = documentTokens + reserved;
         if (string.IsNullOrWhiteSpace(fullText))
         {
             logger.LogInformation("Document context selection completed for document {DocumentId}: no content, {DurationMs} ms", doc.Id, selectionWatch.ElapsedMilliseconds);
             return new("none", "", [], reserved, RetrievalOutcome.NoResults);
         }
-        if (!forceSemantic && (evidenceBudgetTokens is not null ? DocumentChunker.CountTokens(fullText) <= evidenceBudgetTokens : fullTokens <= budget))
+        if (!forceSemantic && documentTokens <= budget && fullTokens <= (evidenceBudgetTokens ?? budget))
         {
             logger.LogInformation("Document context selected: full document {DocumentId} version {Version} in {DurationMs} ms", doc.Id, doc.ContentVersion, selectionWatch.ElapsedMilliseconds);
             return new("full", fullText, [], fullTokens);
         }
+
+        // Relevance check for large documents
+        var relevanceScore = -1.0f;
+        if (doc.IndexingStatus == "Indexed" && doc.IndexedContentVersion == doc.ContentVersion
+            && doc.ChunkingVersion == DocumentChunker.Version && doc.ActiveIndexGeneration is not null)
+        {
+            var queryVector = await embeddings.EmbedQueryAsync(question, ct);
+            var topMatch = (await vectors.SearchAsync(queryVector, userId, documentId, doc.ActiveIndexGeneration, 1, ct)).FirstOrDefault();
+            relevanceScore = topMatch?.Score ?? 0.0f;
+        }
+
+        if (relevanceScore > -1.0f)
+        {
+            logger.LogInformation("Document context selection: relevance check for document {DocumentId} completed (score {Score})", doc.Id, relevanceScore);
+        }
+
+        var threshold = config.GetValue("Rag:RelevanceThreshold", 0.3f);
+        if (relevanceScore > -1.0f && relevanceScore < threshold)
+        {
+            logger.LogInformation("Document context selection completed for document {DocumentId}: irrelevant (score {Score}), {DurationMs} ms", doc.Id, relevanceScore, selectionWatch.ElapsedMilliseconds);
+            return new("none", $"The document {doc.FileName} does not seem relevant to your question.", [], reserved, RetrievalOutcome.Complete, true, "Irrelevant document.");
+        }
+
         if (evidenceBudgetTokens is not null && !string.IsNullOrWhiteSpace(doc.ContentJson))
         {
             try

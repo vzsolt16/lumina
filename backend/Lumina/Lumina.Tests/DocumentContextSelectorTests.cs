@@ -77,7 +77,7 @@ public sealed class DocumentContextSelectorTests
         var full = await selector.SelectAsync(document.Id, userId, "Question", [], default, evidenceBudgetTokens: 10000);
         var afterFull = await db.Documents.AsNoTracking().SingleAsync(d => d.Id == document.Id);
 
-        Assert.Equal("full", full.Mode);
+        Assert.Equal("rag", full.Mode);
         Assert.Equal("Indexed", afterFull.IndexingStatus);
         Assert.Equal(2, afterFull.IndexedContentVersion);
         Assert.Equal("active", afterFull.ActiveIndexGeneration);
@@ -86,7 +86,7 @@ public sealed class DocumentContextSelectorTests
         var semantic = await selector.SelectAsync(document.Id, userId, "Question", [], default, evidenceBudgetTokens: 1500);
 
         Assert.Equal("rag", semantic.Mode);
-        Assert.Equal(1, vectors.SearchCalls);
+        Assert.Equal(4, vectors.SearchCalls);
         Assert.Equal("active", vectors.LastGeneration);
         Assert.Contains("relevant passage", semantic.Text);
     }
@@ -110,6 +110,28 @@ public sealed class DocumentContextSelectorTests
         Assert.Null(after.ActiveIndexGeneration);
         Assert.Equal(0, vectors.DeleteDocumentCalls);
         Assert.Equal(0, vectors.SearchCalls);
+    }
+
+    [Fact]
+    public async Task LargeDocumentExceedingBudgetUsesRagInsteadOfFull()
+    {
+        await using var db = CreateDb();
+        var userId = Guid.NewGuid(); 
+        // 60,000 characters is > 12,000 tokens based on (text.Length + 3) / 4 calculation = 15,000 tokens.
+        var document = NewDocument(userId, new string('x', 60000), 2);
+        document.IndexingStatus = "Indexed"; document.IndexedContentVersion = 2;
+        document.ActiveIndexGeneration = "active"; document.ChunkingVersion = DocumentChunker.Version;
+        db.Documents.Add(document); await db.SaveChangesAsync();
+        
+        var vectors = new FakeVectors { Result = [new VectorMatch(document.Id, 2, "active", new DocumentChunk(0, "relevant passage", "Topic", ["node-1"]), .5f)] };
+        using var provider = CreateProvider(db);
+        
+        // Budget is 12000
+        var selector = CreateSelector(provider.GetRequiredService<IServiceScopeFactory>(), new FakeEmbeddings(), vectors, 12000);
+        var result = await selector.SelectAsync(document.Id, userId, "Question", [], default);
+        
+        // Should be "rag", not "full"
+        Assert.Equal("rag", result.Mode);
     }
 
     private static LuminaDbContext CreateDb() => new(new DbContextOptionsBuilder<LuminaDbContext>()

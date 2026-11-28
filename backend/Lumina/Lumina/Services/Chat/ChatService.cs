@@ -317,10 +317,13 @@ public class ChatService : IChatService
             - ChatRequestBudgeter.EstimateTokens(baseline, tools) - 128);
         failureStage = "retrieval";
         var retrievalWatch = System.Diagnostics.Stopwatch.StartNew();
+        
+        var contextualizedQuestion = ConstructQuery(question, history);
+        
         try
         {
             selectedContext = await _contextSelector.SelectAsync(
-                documentId, userId, question, history.Select(h => h.Content).ToArray(), cancellationToken, evidenceBudget);
+                documentId, userId, contextualizedQuestion, history.Select(h => h.Content).ToArray(), cancellationToken, evidenceBudget);
         }
         catch (Exception ex)
         {
@@ -2638,5 +2641,22 @@ public class ChatService : IChatService
         if (string.IsNullOrWhiteSpace(json)) return null;
         try { return JsonSerializer.Deserialize<List<ChatSource>>(json); }
         catch (JsonException) { return null; }
+    }
+
+    private string ConstructQuery(string question, IReadOnlyList<ChatMessage> history)
+    {
+        var lastUserMessage = history.LastOrDefault(m => m.Role == "user");
+        if (lastUserMessage == null || lastUserMessage.Content == question) return question;
+
+        // Simple follow-up detection: if the question starts with "What about" or "And", 
+        // or is short (e.g., < 20 chars), it's likely a follow-up.
+        if (question.StartsWith("What about", StringComparison.OrdinalIgnoreCase) || 
+            question.StartsWith("And ", StringComparison.OrdinalIgnoreCase) ||
+            question.Length < 20)
+        {
+            return $"Topic: {lastUserMessage.Content}. Current question: {question}";
+        }
+
+        return question;
     }
 }
