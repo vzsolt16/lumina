@@ -54,7 +54,7 @@ public class ChatService : IChatService
         _contextSelector = contextSelector;
         _requestBudgeter = requestBudgeter;
         _telemetry = telemetry;
-        _captureRagSnapshots = configuration.GetValue("Rag:Telemetry:CaptureContent", true);
+        _captureRagSnapshots = configuration.GetValue("Rag:Telemetry:CaptureContent", false);
         _logger = logger;
     }
 

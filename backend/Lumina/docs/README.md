@@ -35,8 +35,10 @@ Configuration is loaded from `appsettings*.json`, environment variables, and a t
 | Section | Controls | Main consumers |
 | --- | --- | --- |
 | `ConnectionStrings:DefaultConnection` | SQLite database path | `Program.cs`, EF Core |
+| `Storage:LocalRootPath` | Root directory for immutable originals and uploaded assets | `LocalFileStorage` |
 | `Jwt` | Issuer, audience, access and refresh lifetimes; signing key comes from secret configuration | JWT setup, `TokenService`; key must be at least 32 characters |
-| `Cors:AllowedOrigins` | Browser origins allowed with credentials | CORS policy in `Program.cs` |
+| `AllowedHosts` | Accepted HTTP host names; production must set a non-wildcard value | ASP.NET Core host filtering |
+| `Cors:AllowedOrigins` | Optional cross-origin browser origins allowed with credentials; same-origin Nginx needs none | CORS policy in `Program.cs` |
 | `Gemini` | Provider base URL, default/model catalog, context sizes and timeout | `GeminiService`, `GeminiModelCatalog`, chat budgeter |
 | `Ollama` | Embedding endpoint/model and timeout | `OllamaEmbeddingService` |
 | `Qdrant` | Vector endpoint, shared collection, timeout | `QdrantVectorStore` |
@@ -45,7 +47,7 @@ Configuration is loaded from `appsettings*.json`, environment variables, and a t
 
 Logging uses Serilog via `ILogger<T>`. `Serilog:MinimumLevel` controls base and category levels; the development config enables `Debug` for Lumina, while the base config keeps Microsoft/System logs at `Warning`. Chat request/SignalR logs carry `TraceId` through ambient log context; background jobs use job/document IDs. See [chat logging and observability](chat-and-workers.md#logging-and-observability) for per-request usage and aggregate interaction metrics.
 
-Values in [appsettings.json](../appsettings.json) are defaults, not secrets. The development settings currently only adjust logging. Qdrant and Ollama are external processes and are not provisioned by the API.
+Values in [appsettings.json](../appsettings.json) are defaults, not secrets. The development settings set the Vite origin and logging. Production startup requires a database connection, Gemini API key, storage root, a specific `AllowedHosts` value, and a valid JWT key. Supply secrets with environment variables or a secret store, never committed JSON. Container paths are `/app/data/lumina.db` and `/app/data/files` on the persistent application volume. `/health/live` is process-only; `/health/ready` checks SQLite and Qdrant. Health responses expose only an overall status. Gemini and Ollama are not readiness dependencies. RAG content snapshots are disabled by default to avoid persisting private document excerpts in telemetry. Qdrant is provisioned by Compose; Ollama remains external.
 
 ## Current boundaries
 

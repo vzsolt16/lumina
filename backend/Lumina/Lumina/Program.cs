@@ -18,6 +18,10 @@ using Microsoft.IdentityModel.Tokens;
 using Lumina.Logging;
 using Serilog;
 using Serilog.Sinks.SystemConsole.Themes;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using System.Text.Json;
+using Lumina.Health;
 
 // Load secrets from a .env file (e.g. Jwt__Key) into environment variables
 // BEFORE the host reads configuration. TraversePath walks up from the working
@@ -83,6 +87,18 @@ if (string.IsNullOrWhiteSpace(jwtOptions.Key) || jwtOptions.Key.Length < 32)
 {
     throw new InvalidOperationException(
         "Jwt:Key is missing or too short. Set 'Jwt__Key' (>= 32 chars) in the .env file at the solution root.");
+}
+
+if (builder.Environment.IsProduction())
+{
+    RequireProductionSetting(builder.Configuration, "ConnectionStrings:DefaultConnection");
+    RequireProductionSetting(builder.Configuration, "Gemini:ApiKey");
+    RequireProductionSetting(builder.Configuration, "Storage:LocalRootPath");
+    var allowedHosts = builder.Configuration["AllowedHosts"];
+    if (string.IsNullOrWhiteSpace(allowedHosts) || allowedHosts == "*")
+    {
+        throw new InvalidOperationException("Set AllowedHosts to the production host name(s).");
+    }
 }
 
 builder.Services
@@ -160,6 +176,14 @@ builder.Services.AddHttpClient<IVectorStore, QdrantVectorStore>(client =>
     client.BaseAddress = new Uri(qdrantUrl);
     client.Timeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("Qdrant:TimeoutSeconds", 30));
 });
+builder.Services.AddHttpClient("QdrantHealth", client =>
+{
+    client.BaseAddress = new Uri(qdrantUrl);
+    client.Timeout = TimeSpan.FromSeconds(3);
+});
+builder.Services.AddHealthChecks()
+    .AddCheck<SqliteReadinessCheck>("sqlite", tags: ["ready"])
+    .AddCheck<QdrantReadinessCheck>("qdrant", tags: ["ready"]);
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IFlashcardService, FlashcardService>();
@@ -178,6 +202,16 @@ builder.Services.AddHttpClient<IAiService, GeminiService>(client =>
 var app = builder.Build();
 
 app.UseMiddleware<TraceIdLoggingMiddleware>();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/problem+json";
+        await context.Response.WriteAsJsonAsync(new { title = "An unexpected error occurred." });
+    }));
+}
 
 app.UseSerilogRequestLogging(options =>
 {
@@ -210,6 +244,17 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors("Frontend");
 
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = WriteHealthResponse
+}).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = WriteHealthResponse
+}).AllowAnonymous();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -219,3 +264,20 @@ app.MapHub<FlashcardHub>("/ws/flashcard");
 app.MapHub<ChatHub>("/ws/chat");
 
 app.Run();
+
+static void RequireProductionSetting(IConfiguration configuration, string key)
+{
+    if (string.IsNullOrWhiteSpace(configuration[key]))
+    {
+        throw new InvalidOperationException($"Required production setting '{key}' is missing.");
+    }
+}
+
+static Task WriteHealthResponse(HttpContext context, HealthReport report)
+{
+    context.Response.ContentType = "application/json";
+    return context.Response.WriteAsync(JsonSerializer.Serialize(new
+    {
+        status = report.Status == HealthStatus.Healthy ? "Healthy" : "Unhealthy"
+    }));
+}

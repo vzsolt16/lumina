@@ -258,6 +258,39 @@ The Gemini API key is injected into the backend container only. Ollama is not
 started by the current Compose configuration because the active backend
 provider is Gemini.
 
+### Production configuration
+
+Compose runs the API in `Production` mode and serves the frontend and API from
+one origin through Nginx. Set these values in the untracked root `.env` file or
+in the deployment platform's secret/config store:
+
+| Variable | Purpose |
+| --- | --- |
+| `JWT_KEY` | Secret used to sign access tokens; at least 32 characters |
+| `GEMINI_API_KEY` | Server-side Gemini credential |
+| `ALLOWED_HOSTS` | Comma-separated host names accepted by ASP.NET Core, for example `app.example.com` |
+| `GEMINI_BASE_URL` | Optional Gemini API base URL |
+| `GEMINI_DEFAULT_MODEL` | Optional configured default model |
+| `GEMINI_TIMEOUT_MINUTES` | Optional provider request timeout |
+| `OLLAMA_BASE_URL` | Optional externally operated embedding service URL; Ollama is not included in Compose |
+| `OLLAMA_EMBEDDING_MODEL` | Optional embedding model name |
+| `QDRANT_BASE_URL` | Optional Qdrant URL (defaults to the Compose service) |
+| `QDRANT_COLLECTION` | Optional vector collection name |
+
+The Compose deployment stores SQLite at `/app/data/lumina.db` and original
+uploads/assets under `/app/data/documents` (the existing in-container storage
+location); the `lumina-data` volume persists both.
+Set `ConnectionStrings__DefaultConnection` and `Storage__LocalRootPath` when
+deploying outside Compose. Set `Cors__AllowedOrigins__0` only when a separate
+browser origin is intentionally used; same-origin Nginx deployment needs no
+CORS allowlist. Production startup rejects a missing database connection,
+Gemini key, local storage root, wildcard/missing `AllowedHosts`, or invalid
+JWT key. `/health/live` checks only the backend process; `/health/ready` checks
+SQLite and Qdrant and returns no infrastructure details. Gemini and Ollama are
+not readiness dependencies. RAG telemetry content capture is off by default;
+set `Rag__Telemetry__CaptureContent=true` only when storing document excerpts
+in diagnostic records is intended.
+
 ## Project Structure
 
 ```text
